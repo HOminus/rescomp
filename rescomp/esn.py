@@ -344,7 +344,7 @@ class ESN(_ESNCore):
                                           size=(self._n_dim, self._x_dim))
 
     def create_network(self, n_dim=500, n_rad=0.1, n_avg_deg=6.0,
-                       n_type_flag="erdos_renyi", network_creation_attempts=10):
+                       n_type_flag="erdos_renyi", network_creation_attempts=10, p_rewire = 0.1):
         """ Creates the internal network used as reservoir in RC
 
         Args:
@@ -375,7 +375,7 @@ class ESN(_ESNCore):
 
         for i in range(network_creation_attempts):
             try:
-                self._create_network_connections()
+                self._create_network_connections(p_rewire)
                 self._vary_network()
             except _ArpackNoConvergence:
                 continue
@@ -384,7 +384,7 @@ class ESN(_ESNCore):
             raise Exception("Network creation during ESN init failed %d times"
                             %network_creation_attempts)
 
-    def _create_network_connections(self):
+    def _create_network_connections(self, p_rewire):
         """ Generate the baseline random network to be scaled
 
         Specification done via protected members
@@ -400,7 +400,7 @@ class ESN(_ESNCore):
                                                seed=np.random)
         elif self._n_type_flag == 2:
             network = nx.watts_strogatz_graph(self._n_dim,
-                                              k=int(self._n_avg_deg), p=0.1,
+                                              k=int(self._n_avg_deg), p=p_rewire,
                                               seed=np.random)
         else:
             raise Exception("the network type %s is not implemented" %
