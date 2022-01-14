@@ -347,7 +347,7 @@ class ESN(_ESNCore):
                                           size=(self._n_dim, self._x_dim))
 
     def create_network(self, n_dim=500, n_rad=0.1, n_avg_deg=6.0,
-                       n_type_flag="erdos_renyi", network_creation_attempts=10, p_rewire = 0.1):
+                       n_type_flag="erdos_renyi", network_creation_attempts=10, **kwargs):
         """ Creates the internal network used as reservoir in RC
 
         Args:
@@ -376,9 +376,13 @@ class ESN(_ESNCore):
         self._n_edge_prob = self._n_avg_deg / (self._n_dim - 1)
         self._n_type_flag = self._n_type_flag_synonyms.get_flag(n_type_flag)
 
+        rewire_probability = None
+        if "rewire_probability" in kwargs:
+            rewire_probability = kwargs["rewire_probability"]
+
         for i in range(network_creation_attempts):
             try:
-                self._create_network_connections(p_rewire)
+                self._create_network_connections(rewire_probability)
                 self._vary_network()
             except _ArpackNoConvergence:
                 continue
@@ -387,7 +391,7 @@ class ESN(_ESNCore):
             raise Exception("Network creation during ESN init failed %d times"
                             %network_creation_attempts)
 
-    def _create_network_connections(self, p_rewire):
+    def _create_network_connections(self, rewire_probability):
         """ Generate the baseline random network to be scaled
 
         Specification done via protected members
@@ -402,8 +406,9 @@ class ESN(_ESNCore):
                                                int(self._n_avg_deg / 2),
                                                seed=np.random)
         elif self._n_type_flag == 2:
+            assert rewire_probability != None
             network = nx.watts_strogatz_graph(self._n_dim,
-                                              k=int(self._n_avg_deg), p=p_rewire,
+                                              k=int(self._n_avg_deg), p=rewire_probability,
                                               seed=np.random)
         else:
             raise Exception("the network type %s is not implemented" %
