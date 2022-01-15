@@ -931,7 +931,6 @@ class MemcapResult:
 
         return mr
 
-# TODO: Generalize to use w_out?
 class InubushiResult:
     def __init__(self, attractor_id: int, discard_steps: int, sync_steps: int, forward_steps: int, measurement_count: int, epsilon: float):
         self.attractor_id: int = attractor_id
@@ -1085,8 +1084,9 @@ class InubushiResult:
         return ir
 
 class TrainStateSpaceResult:
-    def __init__(self, minimum_distance):
+    def __init__(self, minimum_distance, maximum_distance):
         self.minimum_distance = minimum_distance
+        self.maximum_distance = maximum_distance
 
     @staticmethod
     def measure(tsc: TrainStateCapture):
@@ -1095,22 +1095,28 @@ class TrainStateSpaceResult:
         r1 = tsc.r_captures[0]
         r2 = tsc.r_captures[1]
 
-        dst = np.finfo('d').max
+        min_distance = np.finfo('d').max
+        max_distance = 0
         for state1 in r1:
-            current_min_distance = np.min(np.linalg.norm(r2 - state1, axis=1))
-            dst = min(dst, current_min_distance)
+            distance_matrix = np.linalg.norm(r2 - state1)
+            current_min = np.min(distance_matrix, axis=1)
+            current_max = np.max(distance_matrix, axis=1)
 
-        return TrainStateSpaceResult(dst)        
+            min_distance = min(min_distance, current_min)
+            max_distance = max(max_distance, current_max)
+
+        return TrainStateSpaceResult(min_distance, max_distance)   
 
     def as_dict(self):
         return {
             "type": "TrainStateSpaceResult",
-            "minimum_distance": self.minimum_distance
+            "minimum_distance": self.minimum_distance,
+            "maximum_distance": self.maximum_distance,
         }
 
     @staticmethod
     def from_dict(dict):
-        return TrainStateSpaceResult(dict["minimum_distance"])
+        return TrainStateSpaceResult(dict["minimum_distance"], dict["maximum_distance"])
 
 class SvdResult:
     def __init__(self, low_rank_approx_error = None, singular_values: [float] = None):
@@ -1488,6 +1494,8 @@ class Run:
                         measurements += [CircleResult.from_dict(x)]
                     elif x["type"] == "AdvancedNetworkAnalyzationResult":
                         measurements += [AdvancedNetworkAnalyzationResult.from_dict(x)]
+                    elif x["type"] == "TrainStateSpaceResult":
+                        measurements += [TrainStateSpaceResult.from_dict(x)]
                     else:
                         raise f"Failed to deserialize type: {m['type']}"
                 run.add_esnx_measurements(*tuple(measurements))
