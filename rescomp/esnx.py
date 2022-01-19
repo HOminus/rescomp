@@ -235,11 +235,11 @@ def _create_orthogonal_matrix(n_dim, epsilon):
         for i in range(deviations.shape[0]):
             deviations[:, i] = deviations[:, i] / np.linalg.norm(deviations[:, i])
             for k in range(i+ 1, deviations.shape[1]):
-                deviations[:,k] = deviations[:, k] - np.dot(deviations[:, k], deviations[:, i])
+                deviations[:,k] = deviations[:, k] - np.dot(deviations[:, k], deviations[:, i]) * deviations[:, i]
         
         # Rescale to length epsilon
         for col_index in range(deviations.shape[1]):
-            deviations[col_index,:] = epsilon * deviations[col_index,:]
+            deviations[:,col_index] = epsilon * deviations[:,col_index]
         
         return deviations
 
@@ -1045,7 +1045,7 @@ class InubushiResult:
             dx_tanh = np.cosh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)**2
             for i in range(DF.shape[0]):
                 DF[i, :] = dense_network[i,:] / dx_tanh[i]
-            deviations = (1 - esnx.esn._alpha) * deviations + DF @ deviations
+            deviations = (1 - esnx.esn._alpha) * deviations + esnx.esn._alpha * DF @ deviations
 
             current_r = (1 - esnx.esn._alpha) * current_r + esnx.esn._alpha * np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)
             current_s = data[t]
@@ -1629,7 +1629,7 @@ class SimulationResult:
                     lorenz = LorenzConfig.from_dict(attractor_specification)
                     attractor_data += [AttractorData(lorenz)]
                 elif attractor_specification["type"] == "HalvorsenConfig":
-                    halvorsen = HalvorsenConfig(attractor_specification)
+                    halvorsen = HalvorsenConfig.from_dict(attractor_specification)
                     attractor_data += [AttractorData(halvorsen)]
                 elif attractor_specification["type"] == "GuanConfig":
                     guan = GuanConfig.from_dict(attractor_specification)
