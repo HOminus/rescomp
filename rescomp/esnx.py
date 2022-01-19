@@ -1,7 +1,12 @@
-from numpy.lib.function_base import average
-import rescomp
+from . import simulations
+from . import measures
+from . import esn
+from . import circle_criterion
+
 import numpy as np
 import scipy
+import pickle
+import os
 
 from scipy.sparse.linalg.eigen.arpack.arpack \
     import ArpackNoConvergence as _ArpackNoConvergence
@@ -23,7 +28,7 @@ def guan(starting_point, time_steps, dt=0.02, a = 5, b = 15, c = 3, d = 12):
     y = starting_point
     for t in range(time_steps):
         traj[t] = y
-        y = rescomp.simulations._runge_kutta(guan_derivative, dt, y)
+        y = simulations._runge_kutta(guan_derivative, dt, y)
     return traj
 
 def halvorsen(starting_point, time_steps, dt = 0.02, sigma=1.3):
@@ -38,7 +43,7 @@ def halvorsen(starting_point, time_steps, dt = 0.02, sigma=1.3):
     y = starting_point
     for t in range(time_steps):
         traj[t] = y
-        y = rescomp.simulations._runge_kutta(halvorsen_derivative, dt, y)
+        y = simulations._runge_kutta(halvorsen_derivative, dt, y)
     return traj
 
 def circle(time_steps, t0 = 0, dt = 0.02, omega = 1., s = 1.):
@@ -239,10 +244,10 @@ def _create_orthogonal_matrix(n_dim, epsilon):
         return deviations
 
 def _create_random_network(N: int, d: float, rho: float):
-    Minit = sparse.random(N, N, density=d, data_rvs=lambda n: 2*np.random.random(n) - 1)
+    Minit = scipy.sparse.random(N, N, density=d, data_rvs=lambda n: 2*np.random.random(n) - 1)
     for _ in range(10):
         try:
-            eigs = sparse.linalg.eigs(Minit,k=1,which='LM',return_eigenvectors=False)
+            eigs = scipy.sparse.linalg.eigs(Minit,k=1,which='LM',return_eigenvectors=False)
         except _ArpackNoConvergence:
             print("_create_random_matrix: Convergence failed")
             continue
@@ -251,7 +256,7 @@ def _create_random_network(N: int, d: float, rho: float):
         raise Exception("_create_random_matrix: No matrix creation attempt was successful!")
     #returns the eigenvalue of largest magnitude
     M = (rho/abs(eigs[0]))*Minit
-    M = sparse.csr_matrix(M)
+    M = scipy.sparse.csr_matrix(M)
     return M
 
 
@@ -279,10 +284,15 @@ class DataConfig:
         dict = {
             "type": type(self).__name__,
             "position": tuple([self.position[i] for i in range(self.position.shape[0])]),
-            "starting_point": tuple([self.starting_point[i] for i in range(self.starting_point.shape[0])]),
             "scale": self.scale,
             "dt": self.dt
         }
+
+        if type(self.starting_point) == np.ndarray:
+            dict["starting_point"] = tuple([self.starting_point[i] for i in range(self.starting_point.shape[0])]),
+        else:
+            dict["starting_point"] = self.starting_point
+
         if self.rotation is not None:
             dict["rotation"] =  (self.rotation[0], self.rotation[1], self.rotation[2])
         return dict
@@ -331,7 +341,7 @@ class LorenzConfig(DataConfig):
         if type(starting_point_offset) != type(None):
             start_point += starting_point_offset
         
-        data = rescomp.simulations.simulate_trajectory('lorenz', self.dt, total_time_steps, start_point, 
+        data = simulations.simulate_trajectory('lorenz', self.dt, total_time_steps, start_point, 
                     sigma = self.sigma, rho = self.rho, beta = self.beta)
         data = data[discard_steps:,]
 
@@ -538,14 +548,14 @@ class AttractorData:
 
     def divergence_time(self) -> int:
         assert type(self.esn_prediction) == np.ndarray
-        return int(rescomp.measures.divergence_time(self.true_prediction, self.esn_prediction, self.divergence_bounds))
+        return int(measures.divergence_time(self.true_prediction, self.esn_prediction, self.divergence_bounds))
 
     def rmse(self, last_n: int = None) -> float:
         assert type(self.esn_prediction) == np.ndarray
         if last_n == None:
-            return rescomp.measures.rmse(self.esn_prediction, self.true_prediction)
+            return measures.rmse(self.esn_prediction, self.true_prediction)
         else:
-            return rescomp.measures.rmse(self.esn_prediction[-last_n,:], self.true_prediction[-last_n,:])
+            return measures.rmse(self.esn_prediction[-last_n,:], self.true_prediction[-last_n,:])
 
     def reset_data(self, randomize_start: bool, discard_steps: int, train_sync_steps: int, train_steps: int, pred_sync_steps: int, pred_steps: int):
         total_time_steps = discard_steps + train_sync_steps + train_steps + pred_sync_steps + pred_steps
@@ -559,7 +569,7 @@ class AttractorData:
         data, err_bounds, dim_params, lyap_params = self.config.generate_data(discard_steps, total_time_steps, random_offset)
 
         assert data.shape[0] == train_sync_steps + train_steps + pred_sync_steps + pred_steps
-        train, pred = rescomp.utilities.train_and_predict_input_setup(data, 0, train_sync_steps, train_steps, pred_sync_steps, pred_steps)
+        train, pred = utilities.train_and_predict_input_setup(data, 0, train_sync_steps, train_steps, pred_sync_steps, pred_steps)
 
         self.train = train
         self.true_prediction = pred
@@ -581,9 +591,9 @@ class AttractorData:
             r_min = correlation_dimension_params.r_min
             r_max = correlation_dimension_params.r_max
             if last_n == None:
-                corr = rescomp.measures.dimension(data, r_min, r_max)
+                corr = measures.dimension(data, r_min, r_max)
             else:
-                corr = rescomp.measures.dimension(data[-last_n:,], r_min, r_max)
+                corr = measures.dimension(data[-last_n:,], r_min, r_max)
             return corr, None
         else:
             raise "AttractorData:_correlation_lypunov: No measurement specified"
@@ -644,7 +654,7 @@ class TrainStateCapture:
 class ESNX:
     def __init__(self, attractor_config: AttractorConfig):
         self.attractor_config = attractor_config
-        self.esn = rescomp.ESN()
+        self.esn = esn.ESN()
         self.input_strength = None #Used by MemcapResult
 
     def _train_without_fit(self, train_data, train_sync_steps):
@@ -1001,9 +1011,9 @@ class InubushiResult:
         DF = np.zeros((current_r.shape[0], current_r.shape[0]))
         for t in range(1, result.shape[0]):
 
-            dx_tanh = np.cosh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)**2
+            cosh_square_act = np.cosh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)**2
             for i in range(DF.shape[0]):
-                DF[i, :] = dense_network[i,:] / dx_tanh[i]
+                DF[i, :] = dense_network[i,:] / cosh_square_act[i]
             deviations = DF @ deviations
 
             current_r = np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)
@@ -1152,23 +1162,34 @@ class VolumeResult:
         self.normalized_volume = None
 
     @staticmethod
-    def measure(esnx: ESNX, volume: bool = True, normalized_volume:bool = True):
+    def measure(esnx: ESNX):
         vr = VolumeResult()
 
-        x1 = esnx.esn._w_out[0,:]
-        y1 = esnx.esn._w_out[1,:]
-        z1 = esnx.esn._w_out[2,:]
+        if esnx.esn._x_dim == 3:
+            x1 = esnx.esn._w_out[0,:]
+            y1 = esnx.esn._w_out[1,:]
+            z1 = esnx.esn._w_out[2,:]
 
-        a, b, c, v1, v2, v3 = _project_to_3d(x1, y1, z1)
-        if volume == True:
+            a, b, c, v1, v2, v3 = _project_to_3d(x1, y1, z1)
             vr.volume = np.abs(np.dot(a, np.cross(b, c)))
-        if normalized_volume == True:
+            
             a = a / v1
             b = b / v2
             c = c / v3
             vr.normalized_volume = np.abs(np.dot(a, np.cross(b, c)))
-            
-        return vr
+                
+        elif esnx.esn._x_dim == 2:
+            x1 = esnx.esn._w_out[0,:]
+            y1 = esnx.esn._w_out[1,:]
+
+            vr.volume = np.abs(np.dot(x1, y1))
+
+            x1 = x1 / np.linalg.norm(x1)
+            y1 = y1 / np.linalg.norm(y1)
+            vr.normalized_volume = np.abs(np.dot(x1, y1))
+
+        return vr            
+
 
     def as_dict(self):
         dict = {
@@ -1201,20 +1222,17 @@ class CircleResult:
         raise "CircleResult.init: Not yet implemented"
 
     @staticmethod
-    def check_rotation_directiom():
-        raise NotImplementedError("CircleResult.check_rotation_direction: Not yet implemented.")
-
-    @staticmethod
-    def relative_roundness():
-        raise NotImplementedError("CircleResult.relative_roundness: Not yet implemented.")
-
-    @staticmethod
     def measure(esnx: ESNX, attratcor_id: int):
         circle_data = esnx.attractor_config.attractors[attractor_id]
         assert type(circle.config) == CircleConfig
         assert type(circle.esn_prediction) == np.ndarray
 
         data_points_per_period = round((2 * math.pi) / (abs(circle.config.omega) * circle.config.dt))
+
+        # test_err_analysis()
+        # check_err_maxminCA()
+        # check_err_maxminCB()
+        # WTF WTF WTF!!!
 
         raise NotImplementedError("CircleResult.measure: Not yet implemented.")
 
@@ -1302,35 +1320,44 @@ class FlouqetAnalysisResult:
         self.attractor_id = attractor_id
         self.eigenvalues = eigenvalues
 
-    @staticmethod
-    def _jacobian_leaky_integrator(esnx: ESNX, r_state) -> np.ndarray:
-        raise NotImplementedError("FloquetAnalysisResult._jacobian_leaky_integrator: Not yet implemented.")
-
-    def _jacobian_tanh_simple(esnx: ESNX, r_state) -> np.ndarray:
-        raise NotImplementedError("FlouqetAnalysisResult._jacobian_tanh_simple: Not yet implemented.")
-
     # TODO: Do not hardcode period
     @staticmethod
     def measure(esnx: ESNX, attractor_id: int, train_state_capture: TrainStateCapture):
         circle_data = esnx.attractor_config.attractors[attractor_id]
+        
+        assert esnx.esn._w_out_fit_flag == esnx.esn._w_out_fit_flag_synonyms.get_flag("linear_and_square_r")
+        assert type(circle_data.config) == CircleConfig
+        assert type(circle_data.esn_prediction) == np.ndarray
 
-        assert type(circle.config) == CircleConfig
-        assert type(circle.esn_prediction) == np.ndarray
+        dt = circle_data.config.dt
+        data_points_per_period = round((2 * math.pi) / (abs(circle_data.config.omega) * circle_data.config.dt))
 
-        dt = circle.config.dt
-        data_points_per_period = round((2 * math.pi) / (abs(circle.config.omega) * circle.config.dt))
-
-        captured_training_r = train_state_capture.r_captures[0:data_points_per_period]
+        captured_training_r = train_state_capture.r_captures[0][0:data_points_per_period]
 
         tanh_simple_flag = esnx.esn._act_fct_flag_synonyms.get_flag("tanh_simple")
         leaky_integrator_flag = esnx.esn._act_fct_flag_synonyms.get_flag("leaky_integrator")
 
-        q = np.identity(2 * esnx.esn._n_dim)
+        dense_network = esnx.esn._network.todense()
+        w_in_w_out = esnx.esn._w_in @ esnx.esn._w_out
+        
+        q = np.identity(esnx.esn._n_dim)
         for r_state in captured_training_r:
+            ds_tanh = np.diag(1 / np.cosh(esnx.esn._network @ r_state + w_in_w_out @ esnx.esn._r_to_generalized_r(r_state))**2)
+
             if esnx.esn._act_fct_flag == tanh_simple_flag:
-                J = FlouqetAnalysisResult._jacobian_tanh_simple(esnx, r_state)
+                assert NotImplementedError("FlouquetanalysisResult.measure: tanh_simple is not yet implemented.")
             elif esnx.esn._act_fct_flag == leaky_integrator_flag:
-                J = FlouqetAnalysisResult._jacobian_leaky_integrator(esnx, r_state)
+                matrix1 = (1 - esnx.esn._alpha) * np.identity(esnx.esn._n_dim) 
+                matrix2 = esnx.esn._alpha * ds_tanh @ dense_network
+
+                dr_gen_r = np.zeros((2 * esnx.esn._n_dim, esnx.esn._n_dim))
+                for i in range(esnx.esn._n_dim):
+                    dr_gen_r[i, i] = 1
+                    dr_gen_r[i + esnx.esn._n_dim, i] = 2 * r_state[i]
+                
+                matrix3 = (esnx.esn._alpha *  ds_tanh @ w_in_w_out @ dr_gen_r)
+
+                J = matrix1 + matrix2 + matrix3
             else:
                 raise ValueError("FlouqetAnalysisResult.measure: Only 'tanh_simple' and 'leaky_integrator' are supported activation functions.")
 
@@ -1352,6 +1379,47 @@ class FlouqetAnalysisResult:
         fqr.eigenvalues = np.frombuffer(base64.b85decode(dict["eigenvalues"]), dtype='cfloat')
         return fqr
 
+class StoreMatrixResult:
+    unique_id = 1
+
+    class StoreMatrixValue:
+        def __init__(self, w_in, m, w_out):
+            self.w_in = w_in
+            self.m = m
+            self.w_out = w_out
+
+    def __init__(self, path: str):
+        self.path = path
+        raise NotImplementedError("StoreMatrixResult.init: Not yet implemented.")
+
+    def load(self):
+        with open(self.filepath) as file:
+            smv = pickle.load(file)
+        return smv.w_in, smv.m, smv.w_out
+
+    @staticmethod
+    def unique_name(prefix: str):
+        name = prefix + str(StoreMatrixResult.unique_id) + ".dump"
+        StoreMatrixResult += 1
+        return name
+
+    @staticmethod
+    def measure(esnx: ESNX, filepath: str, append_unique: bool):
+        assert os.path.exists(filepath) == False
+        smv = StoreMatrixResult.StoreMatrixValue(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out)
+        with open(filepath, 'w') as file:
+            pickle.dump(smv, file)
+        return StoreMatrixValue(filepath)
+
+    def as_dict(self):
+        return {
+            "type": "StoreMatrixResult",
+            "filepath": self.filepath
+        }
+
+    @staticmethod
+    def from_dict(dict):
+        return StoreMatrixResult(dict["filepath"])
 
 class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
@@ -1386,8 +1454,13 @@ class Run:
         esnx.input_strength = self.input_strength
 
         if self.topology == "random" and self.andrews_matrix_creation:
-            density = run.average_degree / run.size
-            esnx.esn._network = _create_random_network(run.size, density, run.spectral_radius)
+            density = self.average_degree / self.size
+            esnx.esn._network = _create_random_network(self.size, density, self.spectral_radius)
+            esnx.esn._n_dim = self.size
+            esnx.esn._n_rad = self.spectral_radius
+            esnx.esn._n_avg_deg = self.average_degree
+            esnx.esn._n_edge_prob = self.average_degree / (self.size - 1)
+            esnx.esn._n_type_flag = esnx.esn._n_type_flag_synonyms.get_flag(self.topology)
         else:
             esnx.esn.create_network(self.size, self.spectral_radius, self.average_degree, self.topology, rewire_probability=self.rewire_probability)
         
@@ -1458,10 +1531,11 @@ class Run:
         readout = dict["readout"]
         topology = dict["topology"]
 
-        run = Run(size, spectral_radius, average_degree, regression, input_strength, readout, topology)
-
+        rewire_probability = None
         if "rewire_probability" in dict:
-            run.rewire_probability = dict["rewire_probability"]
+            rewire_probability = dict["rewire_probability"]
+
+        run = Run(size, spectral_radius, average_degree, regression, input_strength, readout, topology, rewire_probability=rewire_probability)
         
         if "activation_function" in dict:
             run.activation_function = dict["activation_function"]
