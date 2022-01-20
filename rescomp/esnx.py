@@ -1,7 +1,8 @@
 from . import simulations
 from . import measures
 from . import esn
-from . import circle_criterion
+from . import utilities
+#from . import circle_criterion
 
 import numpy as np
 import scipy
