@@ -290,7 +290,7 @@ class DataConfig:
         }
 
         if type(self.starting_point) == np.ndarray:
-            dict["starting_point"] = tuple([self.starting_point[i] for i in range(self.starting_point.shape[0])]),
+            dict["starting_point"] = self.starting_point.tolist()
         else:
             dict["starting_point"] = self.starting_point
 
