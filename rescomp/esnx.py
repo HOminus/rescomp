@@ -2,7 +2,7 @@ from . import simulations
 from . import measures
 from . import esn
 from . import utilities
-#from . import circle_criterion
+from . import circle_criterion
 
 import numpy as np
 import scipy
@@ -301,7 +301,10 @@ class DataConfig:
     @staticmethod
     def from_dict(dict):
         scale = dict["scale"]
-        position = np.array([dict["position"][0], dict["position"][1], dict["position"][2]])
+        if len(dict["position"]) == 3:
+            position = np.array([dict["position"][0], dict["position"][1], dict["position"][2]])
+        else:
+            position = np.array([dict["position"][0], dict["position"][1]])
         rotation = None
         if "rotation" in dict:
             rotation = np.array([dict["rotation"][0], dict["rotation"][1], dict["rotation"][2]])
@@ -531,7 +534,7 @@ class CircleConfig(DataConfig):
     def from_dict(dict):
         cc = DataConfig.from_dict(dict)
         circle = CircleConfig(cc.scale, cc.position)
-        circle.starting_point = np.array([dict["starting_point"][0], dict["starting_point"][1], dict["starting_point"][2]])
+        circle.starting_point = dict["starting_point"]
         circle.omega = dict["omega"]
         circle.s = dict["s"]
         return circle
@@ -918,7 +921,6 @@ class MemcapResult:
         esn.esn._x_dim = esn_save_x_dim
         esn.esn._w_in = esn_save_w_in
         esn.esn._w_out = esn_save_w_out
-
 
     def as_dict(self, save_stddev: bool = True):
         assert type(self.memcap) == np.ndarray
@@ -1356,7 +1358,7 @@ class FlouqetAnalysisResult:
                     dr_gen_r[i, i] = 1
                     dr_gen_r[i + esnx.esn._n_dim, i] = 2 * r_state[i]
                 
-                matrix3 = (esnx.esn._alpha *  ds_tanh @ w_in_w_out @ dr_gen_r)
+                matrix3 = esnx.esn._alpha *  ds_tanh @ w_in_w_out @ dr_gen_r
 
                 J = matrix1 + matrix2 + matrix3
             else:
@@ -1369,16 +1371,15 @@ class FlouqetAnalysisResult:
 
     def as_dict(self):
         return {
-            "type": "FlouqetAnalysisResult",
+            "type": "FloquetAnalysisResult",
             "attractor_id": self.attractor_id,
             "eigenvalues": base64.b85encode(self.eigenvalues.astype('cfloat').tobytes()).decode('ASCII')
         }
 
     @staticmethod
     def from_dict(dict):
-        fqr = FlouqetAnalysisResult(dict["attractor_id"])
-        fqr.eigenvalues = np.frombuffer(base64.b85decode(dict["eigenvalues"]), dtype='cfloat')
-        return fqr
+        eigenvalues = np.frombuffer(base64.b85decode(dict["eigenvalues"]), dtype='cfloat')
+        return FlouqetAnalysisResult(dict["attractor_id"], eigenvalues)
 
 class StoreMatrixResult:
     unique_id = 1
@@ -1399,13 +1400,15 @@ class StoreMatrixResult:
         return smv.w_in, smv.m, smv.w_out
 
     @staticmethod
-    def unique_name(prefix: str):
-        name = prefix + str(StoreMatrixResult.unique_id) + ".dump"
-        StoreMatrixResult += 1
+    def unique_name():
+        name = f"{StoreMatrixResult.unique_id}.dump"
+        StoreMatrixResult.unique_id += 1
         return name
 
     @staticmethod
-    def measure(esnx: ESNX, filepath: str, append_unique: bool):
+    def measure(esnx: ESNX, filepath: str, create_unique_filename: bool = True):
+        if create_unique_filename:
+            filepath = f"{filepath}/{StoreMatrixResult.unique_filename()}"
         assert os.path.exists(filepath) == False
         smv = StoreMatrixResult.StoreMatrixValue(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out)
         with open(filepath, 'w') as file:
@@ -1571,8 +1574,10 @@ class Run:
                         measurements += [AdvancedNetworkAnalyzationResult.from_dict(x)]
                     elif x["type"] == "TrainStateSpaceResult":
                         measurements += [TrainStateSpaceResult.from_dict(x)]
+                    elif x["type"] == "FloquetAnalysisResult":
+                        measurements += [FlouqetAnalysisResult.from_dict(x)]
                     else:
-                        raise f"Failed to deserialize type: {m['type']}"
+                        raise ValueError(f"Failed to deserialize type: {m['type']}")
                 run.add_esnx_measurements(*tuple(measurements))
 
         return run
