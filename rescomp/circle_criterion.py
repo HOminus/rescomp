@@ -100,12 +100,4 @@ def list_to_check_if_LC(x, sample_start, sample_end, FP_err_lim, FP_sample_start
     raise NotImplementedError("WTF")
 
 def list_to_check_if_LC_v3(x, sample_start, sample_end, FP_err_lim, FP_sample_start, FP_sample_end, LC_err_tol, round_no):
-
-
-
-
-
-
-
-
-
+    raise NotImplementedError("list_to_check_if_LC_v3: Not yet implemented.")

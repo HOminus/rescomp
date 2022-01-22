@@ -1330,12 +1330,12 @@ class FlouqetAnalysisResult:
         
         assert esnx.esn._w_out_fit_flag == esnx.esn._w_out_fit_flag_synonyms.get_flag("linear_and_square_r")
         assert type(circle_data.config) == CircleConfig
-        assert type(circle_data.esn_prediction) == np.ndarray
+        #assert type(circle_data.esn_prediction) == np.ndarray
 
         dt = circle_data.config.dt
         data_points_per_period = round((2 * math.pi) / (abs(circle_data.config.omega) * circle_data.config.dt))
 
-        captured_training_r = train_state_capture.r_captures[0][0:data_points_per_period]
+        captured_training_r = train_state_capture.r_captures[attractor_id][0:data_points_per_period]
 
         tanh_simple_flag = esnx.esn._act_fct_flag_synonyms.get_flag("tanh_simple")
         leaky_integrator_flag = esnx.esn._act_fct_flag_synonyms.get_flag("leaky_integrator")
@@ -1348,23 +1348,22 @@ class FlouqetAnalysisResult:
             ds_tanh = np.diag(1 / np.cosh(esnx.esn._network @ r_state + w_in_w_out @ esnx.esn._r_to_generalized_r(r_state))**2)
 
             if esnx.esn._act_fct_flag == tanh_simple_flag:
-                assert NotImplementedError("FlouquetanalysisResult.measure: tanh_simple is not yet implemented.")
+                assert NotImplementedError("FlouquetAnalysisResult.measure: tanh_simple is not yet implemented.")
             elif esnx.esn._act_fct_flag == leaky_integrator_flag:
-                matrix1 = (1 - esnx.esn._alpha) * np.identity(esnx.esn._n_dim) 
-                matrix2 = esnx.esn._alpha * ds_tanh @ dense_network
+                matrix2 = ds_tanh @ dense_network
 
                 dr_gen_r = np.zeros((2 * esnx.esn._n_dim, esnx.esn._n_dim))
                 for i in range(esnx.esn._n_dim):
                     dr_gen_r[i, i] = 1
                     dr_gen_r[i + esnx.esn._n_dim, i] = 2 * r_state[i]
                 
-                matrix3 = esnx.esn._alpha *  ds_tanh @ w_in_w_out @ dr_gen_r
+                matrix3 = ds_tanh @ w_in_w_out @ dr_gen_r
 
-                J = matrix1 + matrix2 + matrix3
+                # The equation d/dt Q = J * Q needs to be discretized in the same way as
+                # the leaky integrator is a discretized version of the continous reservoir equation
+                q = (1 - esnx.esn._alpha) * q + esnx.esn._alpha * (matrix2 + matrix3) @ q
             else:
                 raise ValueError("FlouqetAnalysisResult.measure: Only 'tanh_simple' and 'leaky_integrator' are supported activation functions.")
-
-            q = q + (J @ q) * dt
 
         eigenvalues = scipy.sparse.linalg.eigs(q, k=10, which='LM', return_eigenvectors=False)
         return FlouqetAnalysisResult(attractor_id, eigenvalues)
