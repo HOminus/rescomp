@@ -5,7 +5,7 @@ from . import simulations, utilities, measures, esn, esnx, locality_measures
 from .esn import ESN, ESNWrapper, ESNGenLoc
 from .esnx import DataConfig, LorenzConfig, HalvorsenConfig, GuanConfig, CircleConfig, AttractorConfig, ESNX, \
     AttractorResult, MemcapResult, InubushiResult, TrainStateSpaceResult, SvdResult, VolumeResult, CircleResult, AdvancedNetworkAnalyzationResult, FlouqetAnalysisResult, \
-        Run, SimulationResult, AdvancedNetworkAnalyzationResult
+        Run, SimulationResult, AdvancedNetworkAnalyzationResult, CircleRoundnessResult
 from .utilities import read_pickle
 from .simulations import simulate_trajectory
 from ._version import __version__

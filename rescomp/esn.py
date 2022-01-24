@@ -39,6 +39,9 @@ class _ESNCore(utilities._ESNLogging):
 
         self._alpha = None
 
+        self._gamma = None
+        self._timescale = None
+
         self._w_out_fit_flag_synonyms = utilities._SynonymDict()
         self._w_out_fit_flag_synonyms.add_synonyms(0, ["linear_r", "simple"])
         self._w_out_fit_flag_synonyms.add_synonyms(1, "linear_and_square_r")
@@ -289,6 +292,7 @@ class ESN(_ESNCore):
         self._act_fct_flag_synonyms.add_synonyms(2, "tanh_squared")
         self._act_fct_flag_synonyms.add_synonyms(3, ["mixed", "mix"])
         self._act_fct_flag_synonyms.add_synonyms(4, "leaky_integrator")
+        self._act_fct_flag_synonyms.add_synonyms(5, "continous")
 
         # Dictionary defining synonyms for the different ways to create the
         # network. Internally the corresponding integers are used
@@ -515,6 +519,8 @@ class ESN(_ESNCore):
             self._act_fct = self._act_fct_mixed
         elif self._act_fct_flag == 4:
             self._act_fct = self._leaky_integrator_act_fct
+        elif self._act_fct_flag == 5:
+            self._act_fct = self._continous_act_fct
         else:
             raise Exception('self._act_fct_flag %s does not have a activation '
                             'function implemented!' % str(self._act_fct_flag))
@@ -535,6 +541,20 @@ class ESN(_ESNCore):
 
     def _leaky_integrator_act_fct(self, x, r):
         return (1. - self._alpha) * r + self._alpha * np.tanh(self._w_in @ x + self._network @ r)
+
+    def _continous_act_fct(self, x, r):
+        k1 = self._timescale * self._gamma * (-r + np.tanh(self._w_in @ x + self._network @ r))
+
+        k2_r = r + k1 / 2
+        k2 = self._timescale * self._gamma * (-k2_r + np.tanh(self._w_in @ x + self._network @ k2_r))
+
+        k3_r = r + k2 / 2
+        k3 = self._timescale * self._gamma * (-k3_r + np.tanh(self._w_in @ x + self._network @ k3_r))
+
+        k4_r = r + k3
+        k4 = self._timescale * self._gamma * (-k4_r + np.tanh(self._w_in @ x + self._network @ k4_r))
+
+        return r + (1/6) * (k1 + 2 * (k2 + k3) + k4)
 
     def _act_fct_tanh_bias(self, x, r):
         """ Activation function of the elementwise np.tanh() with added bias
