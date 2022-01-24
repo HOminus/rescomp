@@ -1452,8 +1452,6 @@ class FlouqetAnalysisResult:
 
         captured_training_r = train_state_capture.r_captures[attractor_id][-data_points_per_period-1:,]
 
-        print("Dst: ", np.linalg.norm(captured_training_r[-1,] - captured_training_r[0,]))
-
         tanh_simple_flag = esnx.esn._act_fct_flag_synonyms.get_flag("tanh_simple")
         leaky_integrator_flag = esnx.esn._act_fct_flag_synonyms.get_flag("leaky_integrator")
         continous_flag = esnx.esn._act_fct_flag_synonyms.get_flag("continous")
