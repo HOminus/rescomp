@@ -320,16 +320,16 @@ def get_error_both(c1_rel_roundness, c2_rel_roundness, err_c1, err_c2, filt_err_
     err_vals_CB = []
 
     for i in range(len(err_c1)):
-        dummy = err_CA[i]
-        if dummy == 2.0 and CArel_roundness[i] <= LC_error_bound and filt_err_CA[i] == 4.0:
+        dummy = err_c1[i]
+        if dummy == 2.0 and CArel_roundness[i] <= LC_error_bound and filt_err_c1[i] == 4.0:
             dummy = CArel_roundness[i]
         else:
             dummy = np.nan
         err_vals_CA.append(dummy)
     
-    for i in range(len(err_CB)):
-        dummy = err_CB[i]
-        if dummy == 5.0 and CBrel_roundness[i] <= LC_error_bound and filt_err_CB[i] == 4.0:
+    for i in range(len(err_c2)):
+        dummy = err_c2[i]
+        if dummy == 5.0 and CBrel_roundness[i] <= LC_error_bound and filt_err_c2[i] == 4.0:
             dummy = CBrel_roundness[i]
         else:
             dummy = np.nan

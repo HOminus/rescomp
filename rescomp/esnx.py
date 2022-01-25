@@ -1294,6 +1294,12 @@ class CircleResult:
         self.relative_roundness_C2 = relative_roundness_c2
         self.filt_C2 = err_c2_filt
 
+    def success(self, lc_error_bound) -> bool:
+        if self.err_C1 == 2.0 and self.relative_roundness_C1 <= lc_error_bound and self.filt_C1 == 4.0:
+            if self.err_C2 == 5.0 and self.relative_roundness_C2 <= lc_error_bound and self.filt_C2 == 4.0:
+                return True
+        return False
+
     def as_dict(self):
         return {
             "type": "CircleResult",
