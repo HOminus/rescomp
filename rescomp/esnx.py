@@ -1219,34 +1219,6 @@ class VolumeResult:
 
         return volume
 
-class CircleRoundnessResult:
-    def __init__(self, attractor_id: int, roundness: float):
-        self.attractor_id = attractor_id
-        self.roundness = roundness
-
-    @staticmethod
-    def measure(esnx: ESNX, attractor_id: int):
-        circle_data = esnx.attractor_config.attractors[attractor_id]
-
-        assert type(circle_data.config) == CircleConfig
-
-        center = np.average(circle_data.esn_prediction, axis=0)
-        distances_from_center = np.linalg.norm(circle_data.esn_prediction - center, axis = 1)
-        roundness = np.amax(distances_from_center) - np.amin(distances_from_center)
-
-        return CircleRoundnessResult(attractor_id, roundness)
-
-    def as_dict(self):
-        return {
-            "type": "CircleRoundnessResult",
-            "attractor_id": self.attractor_id,
-            "roundness": self.roundness,
-        }
-
-    @staticmethod
-    def from_dict(dict):
-        return RoundnessResult(dict["attractor_id"], dict["roundness"])
-
 class CircleResult:
     def __init__(self):
 
@@ -1325,6 +1297,7 @@ class CircleResult:
     def as_dict(self):
         return {
             "type": "CircleResult",
+            "version": "0.1.0", #Just in case I change something later
             "sample_start": self.sample_start,
             "sample_end": self.sample_end,
             "stepback": self.stepback,
@@ -1357,8 +1330,8 @@ class CircleResult:
 
         cr.err_C1 = dict["err_C1"]
         cr.err_C2 = dict["err_C2"]
-        cr.relative_roundness_C1 = dict["relative_roundness_c1"]
-        cr.relative_roundness_C2 = dict["relative_roundness_c2"]
+        cr.relative_roundness_C1 = dict["relative_roundness_C1"]
+        cr.relative_roundness_C2 = dict["relative_roundness_C2"]
         cr.filt_C1 = dict["filt_C1"]
         cr.filt_C2 = dict["filt_C2"]
 
@@ -1530,29 +1503,26 @@ class StoreMatrixResult:
             self.w_out = w_out
 
     def __init__(self, path: str):
-        self.path = path
-        raise NotImplementedError("StoreMatrixResult.init: Not yet implemented.")
+        self.filepath = path
 
     def load(self):
-        with open(self.filepath) as file:
-            smv = pickle.load(file)
+        with open(self.filepath, 'rb') as file:
+            smv = pickle.load(file, encoding='bytes')
         return smv.w_in, smv.m, smv.w_out
 
     @staticmethod
-    def unique_name():
+    def unique_filename():
         name = f"{StoreMatrixResult.unique_id}.dump"
         StoreMatrixResult.unique_id += 1
         return name
 
     @staticmethod
-    def measure(esnx: ESNX, filepath: str, create_unique_filename: bool = True):
-        if create_unique_filename:
-            filepath = f"{filepath}/{StoreMatrixResult.unique_filename()}"
-        assert os.path.exists(filepath) == False
+    def measure(esnx: ESNX, filepath: str, fileprefix: str):
+        total_path = f"{filepath}/{fileprefix}_{StoreMatrixResult.unique_filename()}"
         smv = StoreMatrixResult.StoreMatrixValue(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out)
-        with open(filepath, 'w') as file:
+        with open(total_path, 'wb') as file:
             pickle.dump(smv, file)
-        return StoreMatrixValue(filepath)
+        return StoreMatrixResult(total_path)
 
     def as_dict(self):
         return {
@@ -1737,6 +1707,8 @@ class Run:
                         measurements += [FlouqetAnalysisResult.from_dict(x)]
                     elif x["type"] == "CircleRoundnessResult":
                         measurements += [CircleRoundnessResult.from_dict(x)]
+                    elif x["type"] == "StoreMatrixResult":
+                        measurements += [StoreMatrixResult.from_dict(x)]
                     else:
                         raise ValueError(f"Failed to deserialize type: {m['type']}")
                 run.add_esnx_measurements(*tuple(measurements))
