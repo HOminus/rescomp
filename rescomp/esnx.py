@@ -47,6 +47,24 @@ def halvorsen(starting_point, time_steps, dt = 0.02, sigma=1.3):
         y = simulations._runge_kutta(halvorsen_derivative, dt, y)
     return traj
 
+def roessler(starting_point, time_steps, timescale, dt, a, b, c):
+    def roessler_derivative(x):
+        dx = np.zeros(x.shape)
+        dx[0] = -(x[1] + x[2])
+        dx[1] = (x[0] + a * x[1])
+        dx[2] = (b + x[2] * (x[0] - c))
+        if timescale == None:
+            return dx
+        else:
+            return timescale * dx
+
+    traj = np.zeros((time_steps, starting_point.shape[0]))
+    y = starting_point
+    for t in range(time_steps):
+        traj[t] = y
+        y = simulations._runge_kutta(roessler_derivative, dt, y)
+    return traj
+
 def circle(time_steps, t0 = 0, dt = 0.02, omega = 1., s = 1.):
     traj = np.zeros((time_steps, 2))
 
@@ -423,6 +441,74 @@ class HalvorsenConfig(DataConfig):
         halvorsen.starting_point = np.array([dict["starting_point"][0], dict["starting_point"][1], dict["starting_point"][2]])
         halvorsen.sigma = dict["sigma"]
         return halvorsen
+
+class RoesslerConfig(DataConfig):
+    def __init__(self, scale = None, pos = None, rot = None):
+        super().__init__(scale, pos, rot)
+        self.a = 0.1
+        self.b = 0.1
+        self.c = 14
+        self.timescale = None
+
+    def set_roessler(self, a, b, c):
+        self.a = a
+        self.b = b
+        self.c = c
+
+    def error_bounds(self):
+        if self.a == 0.1 and self.b == 0.1 and self.c == 14:
+            raise NotImplementedError("RoesslerConfig.error_bounds: Not yet implemented")
+        raise ValueError(f"RoesslerConfig.error_bounds: No error bounds for {self.a} {self.b} {self.c}")
+
+    def lyapunov_parameters(self) -> LyapunovComputationParameters:
+        return None # Should be fine as long as no code uses it
+
+    def error_bounds(self):
+        if self.a == 0.1 and self.b == 0.1 and self.c == 14:
+            return np.array([6.25, 5.88, 5.78])
+        raise NotImplementedError(f"RoesserConfig.error_bounds: No error bounds for a={self.a} b={self.b} c={self.c}")
+
+    def dimension_parameters(self) -> CorrelationDimensionComputationParameters:
+        if self.a == 0.1 and self.b == 0.1 and self.c == 14:
+            return CorrelationDimensionComputationParameters(0.51359344, 2.2231223)
+        raise NotImplementedError("RoesslerConfig.dimension_parameters: Not yet implemented.")
+
+    def generate_data(self, discard_steps: int, total_time_steps: int, starting_point_offset = None):
+        start_point = copy.deepcopy(self.starting_point)
+        if type(starting_point_offset) != type(None):
+            start_point += starting_point_offset
+
+        data = roessler(start_point, total_time_steps, self.timescale, self.dt, self.a, self.b, self.c)
+        data = data[discard_steps:,]
+
+        err_bounds = self.error_bounds()
+        dim_params = self.dimension_parameters()
+        lyap_params = self.lyapunov_parameters()
+
+        data, err_bounds, dim_params, lyap_params = spr(data, err_bounds, dim_params, lyap_params, self.scale, self.position, self.rotation)
+        return data, err_bounds, dim_params, lyap_params
+
+    def as_dict(self):
+        dict = {**super().as_dict(),
+            "a": self.a,
+            "b": self.b,
+            "c": self.c
+        }
+        if timescale != None:
+            dict["timescale"] = self.timescale
+
+        return timescale
+
+    def from_dict(dict):
+        cc = DataConfig.from_dict()
+        roessler = RoesslerConfig(cc.scale, cc.position, cc.rotation)
+        roessler.starting_point = np.array([dict["starting_point"][0], dict["starting_point"][1], dict["starting_point"][2]])
+        roessler.a = dict["a"]
+        roessler.b = dict["b"]
+        roessler.c = dict["c"]
+        if "timescale" in dict:
+            roessler.timescale = dict["timescale"]
+        return roessler
 
 class GuanConfig(DataConfig):
     def __init__(self, scale = None, pos = None, rot = None):
@@ -1776,6 +1862,9 @@ class SimulationResult:
                 elif attractor_specification["type"] == "HalvorsenConfig":
                     halvorsen = HalvorsenConfig.from_dict(attractor_specification)
                     attractor_data += [AttractorData(halvorsen)]
+                elif attractor_specification["type"] == "RoesslerConfig":
+                    roessler = RoesslerConfig.from_dict(attractor_specification)
+                    attractor_data += [AttractorData(roessler)]
                 elif attractor_specification["type"] == "GuanConfig":
                     guan = GuanConfig.from_dict(attractor_specification)
                     attractor_data += [AttractorData(guan)]
