@@ -3,6 +3,7 @@ from . import measures
 from . import esn
 from . import utilities
 from . import circle_criterion
+from . import circle_criterion2
 
 import numpy as np
 import scipy
@@ -75,7 +76,10 @@ def circle(time_steps, t0 = 0, dt = 0.02, omega = 1., s = 1.):
 
 def spr(data, err, dim_params, lyap_params, scale, pos, rot):
     mean = np.mean(data, axis = 0)
-    data = data - mean
+    shifted_by_mean = False
+    if not all(abs(x) < 1e-5 for x in mean):
+        shifted_by_mean = True
+        data = data - mean
     if type(rot) is np.ndarray and rot[0] != 0:
         rx = rot[0]
         m = np.array([[1., 0. , 0.], [0.0, cos(rx), -sin(rx)], [0.0, sin(rx), cos(rx)]])
@@ -105,7 +109,7 @@ def spr(data, err, dim_params, lyap_params, scale, pos, rot):
             lyap_params.epsilon = scale/size * lyap_params.epsilon
     if type(pos) is np.ndarray:
         data = data + pos
-    else:
+    elif shifted_by_mean:
         data = data + mean
     
     return data, err, dim_params, lyap_params
@@ -263,9 +267,9 @@ def _create_orthogonal_matrix(n_dim, epsilon):
         return deviations
 
 def _create_random_network(N: int, d: float, rho: float):
-    Minit = scipy.sparse.random(N, N, density=d, data_rvs=lambda n: 2*np.random.random(n) - 1)
     for _ in range(10):
         try:
+            Minit = scipy.sparse.random(N, N, density=d, data_rvs=lambda n: 2*np.random.random(n) - 1)
             eigs = scipy.sparse.linalg.eigs(Minit,k=1,which='LM',return_eigenvectors=False)
         except _ArpackNoConvergence:
             print("_create_random_matrix: Convergence failed")
@@ -273,7 +277,6 @@ def _create_random_network(N: int, d: float, rho: float):
         break
     else:
         raise Exception("_create_random_matrix: No matrix creation attempt was successful!")
-    #returns the eigenvalue of largest magnitude
     M = (rho/abs(eigs[0]))*Minit
     M = scipy.sparse.csr_matrix(M)
     return M
@@ -746,6 +749,7 @@ class ESNX:
         self.attractor_config = attractor_config
         self.esn = esn.ESN()
         self.input_strength = None #Used by MemcapResult
+        self.alpha_blend = None
 
     def _train_without_fit(self, train_data, train_sync_steps):
         if train_sync_steps != 0:
@@ -776,10 +780,31 @@ class ESNX:
             if capture_train_states:
                 tsc.capture(self)
         
-        r_combined = np.vstack(tuple(r)).T
-        y_combined = np.vstack(tuple(y))
+        if self.alpha_blend != None:
+            assert len(r) == 2
+
+            blended_r_combined = np.vstack((self.alpha_blend * r[0], (1 - self.alpha_blend) * r[1]))
+            blended_y_combined = np.vstack((self.alpha_blend * y[0], (1 - self.alpha_blend) * y[1]))
+
+            r_combined = np.zeros(blended_r_combined.shape)
+            y_combined = np.zeros(blended_y_combined.shape)
+            indices = list(range(r_combined.shape[0]))
+            np.random.shuffle(indices)
+            for i, s in enumerate(indices):
+                r_combined[i,:] = blended_r_combined[s,:]
+                y_combined[i,:] = blended_y_combined[s,:]
+            r_combined = r_combined.T
+        else:
+            r_combined = np.vstack(tuple(r)).T
+            y_combined = np.vstack(tuple(y))
+
         w_out = np.linalg.solve(r_combined @ r_combined.T + self.esn._reg_param * np.identity(r_combined.shape[0]),
                 r_combined @ y_combined).T
+
+        #r_combined = np.vstack(tuple(r))
+        #y_combined = np.vstack(tuple(y)).T
+        #w_out = (y_combined @ r_combined) @ np.linalg.inv(r_combined.T @ r_combined + self.esn._reg_param * np.identity(r_combined.shape[1]))
+
         self.esn._w_out = w_out
         return tsc
 
@@ -1360,7 +1385,7 @@ class CircleResult:
         err_c1, roundness_c1, \
             xmax_localmaxima_c1, xmin_localmaxima_c1, xmax_localminima_c1, xmin_localminima_c1, \
             ymax_localmaxima_c1, ymin_localmaxima_c1, ymax_localminima_c1, ymin_localminima_c1 \
-            = circle_criterion.test_err_analysis(circle1_data.esn_prediction, self.sample_start, self.sample_end, self.stepback, self.FP_err_lim, self.FP_sample_start, self.FP_sample_end, self.LC_err_tol, self.rounding_no)
+            = circle_criterion.test_err_analysis(circle1_data.esn_prediction, self.sample_start, self.sample_end, self.stepback, self.FP_err_lim, self.FP_sample_start, self.FP_sample_end, self.LC_err_tol, self.LC_err_tol_v3, self.rounding_no)
         relative_roundness_c1 = roundness_c1 / r1
         err_c1_filt = circle_criterion.check_err_maxminCA(err_c1, xmax_localmaxima_c1, ymax_localmaxima_c1, xmax_localminima_c1, ymax_localminima_c1, xmin_localmaxima_c1, ymin_localmaxima_c1, xmin_localminima_c1, ymin_localminima_c1)
 
@@ -1372,7 +1397,7 @@ class CircleResult:
         err_c2, roundness_c2, \
             xmax_localmaxima_c2, xmin_localmaxima_c2, xmax_localminima_c2, xmin_localminima_c2, \
             ymax_localmaxima_c2, ymin_localmaxima_c2, ymax_localminima_c2, ymin_localminima_c2 \
-            = circle_criterion.test_err_analysis(circle2_data.esn_prediction, self.sample_start, self.sample_end, self.stepback, self.FP_err_lim, self.FP_sample_start, self.FP_sample_end, self.LC_err_tol, self.rounding_no)
+            = circle_criterion.test_err_analysis(circle2_data.esn_prediction, self.sample_start, self.sample_end, self.stepback, self.FP_err_lim, self.FP_sample_start, self.FP_sample_end, self.LC_err_tol, self.LC_err_tol_v3, self.rounding_no)
         relative_roundness_c2 = roundness_c2 / r2
         err_c2_filt = circle_criterion.check_err_maxminCB(err_c2, xmax_localmaxima_c2, ymax_localmaxima_c2, xmax_localminima_c2, ymax_localminima_c2, xmin_localmaxima_c2, ymin_localmaxima_c2, xmin_localminima_c2, ymin_localminima_c2)
 
@@ -1428,6 +1453,79 @@ class CircleResult:
         cr.filt_C2 = dict["filt_C2"]
 
         return cr
+
+class CircleResult2:
+    def __init__(self):
+        #parameters
+        self.sample_start = None
+        self.sample_end = None
+        self.stepback = None
+        self.FP_err_lim = None
+        self.FP_sample_start = None
+        self.FP_sample_end = None
+        self.LC_err_tol = None
+        self.LC_err_tol_v3 = None
+        self.rounding_no = None
+
+        #result
+        self.err_C1 = None
+        self.err_C2 = None
+        self.relative_roundness_C1 = None
+        self.relative_roundness_C2 = None
+        self.filt_C1 = None
+        self.filt_C2 = None
+
+    def success(self, lc_error_bound) -> bool:
+        if self.err_C1 == 2.0 and self.relative_roundness_C1 <= lc_error_bound and self.filt_C1 == 4.0:
+            if self.err_C2 == 5.0 and self.relative_roundness_C2 <= lc_error_bound and self.filt_C2 == 4.0:
+                return True
+        return False
+
+    def measure(self, esnx: ESNX):
+        circle1_data = esnx.attractor_config.attractors[0]
+        circle2_data = esnx.attractor_config.attractors[1]
+
+        assert len(esnx.attractor_config.attractors) == 2
+        assert type(circle1_data.config) == CircleConfig and type(circle2_data.config) == CircleConfig
+        assert type(circle2_data.esn_prediction) == np.ndarray and type(circle2_data.esn_prediction) == np.ndarray
+
+        # Set unassigned values to default values from Andrews jupyter notebook
+        data_point_count = circle1_data.esn_prediction.shape[0]
+        if self.sample_start == None:
+            self.sample_start = data_point_count - 5000
+        if self.sample_end == None:
+            self.sample_end = data_point_count - 1000
+        if self.stepback == None:
+            self.stepback = 20
+        if self.FP_err_lim == None:
+            self.FP_err_lim = 1e-3
+        if self.FP_sample_start == None:
+            self.FP_sample_start = data_point_count - 1000
+        if self.FP_sample_end == None:
+            self.FP_sample_end = data_point_count
+        if self.LC_err_tol == None:
+            self.LC_err_tol = 0.01
+        if self.LC_err_tol_v3 == None:
+            self.LC_err_tol_v3 = 0.00001
+        if self.rounding_no == None:
+            self.rounding_no = 2
+
+
+
+        err_C1,C1_vel_dir_strict,C1_roundness,C1_Rad_perr,C1_xcenter_err,C1_ycenter_err,x_C1_no_of_unique_maxima,C1_periodic_prof,xmax_localmaxima_C1,xmin_localmaxima_C1,xmax_localminima_C1,xmin_localminima_C1,ymax_localmaxima_C1,ymin_localmaxima_C1,ymax_localminima_C1,ymin_localminima_C1=circle_criterion2.test_Error_analysis_of_Pred_Circle(circle1_data.esn_prediction[:,0],circle1_data.esn_prediction[:,1],self.FP_err_lim,self.FP_sample_start,self.FP_sample_end,self.LC_err_tol,self.rounding_no,self.sample_start,self.sample_end,self.stepback,5.0,0.0,0.0,1000)
+        C1rel_roundness=C1_roundness/5.0
+        err_C1filt=circle_criterion2.check_errmaxminCA(err_C1,0.0,xmax_localmaxima_C1,ymax_localmaxima_C1,xmax_localminima_C1,ymax_localminima_C1,xmin_localmaxima_C1,ymin_localmaxima_C1,xmin_localminima_C1,ymin_localminima_C1)
+
+        err_C2,C2_vel_dir_strict,C2_roundness,C2_Rad_perr,C2_xcenter_err,C2_ycenter_err,x_C2_no_of_unique_maxima,C2_periodic_prof,xmax_localmaxima_C2,xmin_localmaxima_C2,xmax_localminima_C2,xmin_localminima_C2,ymax_localmaxima_C2,ymin_localmaxima_C2,ymax_localminima_C2,ymin_localminima_C2=circle_criterion2.test_Error_analysis_of_Pred_Circle(circle2_data.esn_prediction[:,0],circle2_data.esn_prediction[:,1],self.FP_err_lim,self.FP_sample_start,self.FP_sample_end,self.LC_err_tol,self.rounding_no,self.sample_start,self.sample_end,self.stepback,5.0,0.0,0.0,1000)
+        C2rel_roundness=C2_roundness/5.0
+        err_C2filt=circle_criterion2.check_errmaxminCB(err_C2,0.0,xmax_localmaxima_C2,ymax_localmaxima_C2,xmax_localminima_C2,ymax_localminima_C2,xmin_localmaxima_C2,ymin_localmaxima_C2,xmin_localminima_C2,ymin_localminima_C2)
+
+        self.err_C1 = err_C1
+        self.err_C2 = err_C2
+        self.relative_roundness_C1 = C1rel_roundness
+        self.relative_roundness_C2 = C2rel_roundness
+        self.filt_C1 = err_C1filt
+        self.filt_C2 = err_C2filt
 
 class AdvancedNetworkAnalyzationResult:
     class NodesAnalysis:
@@ -1519,7 +1617,7 @@ class FlouqetAnalysisResult:
 
         tanh_simple_flag = esnx.esn._act_fct_flag_synonyms.get_flag("tanh_simple")
         leaky_integrator_flag = esnx.esn._act_fct_flag_synonyms.get_flag("leaky_integrator")
-        continous_flag = esnx.esn._act_fct_flag_synonyms.get_flag("continous")
+        continuous_flag = esnx.esn._act_fct_flag_synonyms.get_flag("continuous")
 
         dense_network = esnx.esn._network.todense()
         w_in_w_out = esnx.esn._w_in @ esnx.esn._w_out
@@ -1541,9 +1639,9 @@ class FlouqetAnalysisResult:
                 matrix3 = ds_tanh @ w_in_w_out @ dr_gen_r
 
                 # The equation d/dt Q = J * Q needs to be discretized in the same way as
-                # the leaky integrator is a discretized version of the continous reservoir equation
+                # the leaky integrator is a discretized version of the continuous reservoir equation
                 q = (1 - esnx.esn._alpha) * q + esnx.esn._alpha * (matrix2 + matrix3) @ q
-            elif esnx.esn._act_fct_flag == continous_flag:
+            elif esnx.esn._act_fct_flag == continuous_flag:
                 matrix1 = -np.identity(esnx.esn._n_dim)
                 matrix2 = ds_tanh @ dense_network
 
@@ -1630,7 +1728,7 @@ class StoreMatrixResult:
 class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
                 rewire_probability: float = None, activation_function: str = None, leaky_alpha: float = None, w_in_sparse: float = None,
-                simplified_network: bool = False, andrews_matrix_creation: bool = False, continous_gamma: float = None):
+                simplified_network: bool = False, andrews_matrix_creation: bool = False, continuous_gamma: float = None, alpha_blend: float = None):
         self.size = size
         self.spectral_radius = spectral_radius
         self.average_degree = average_degree
@@ -1648,11 +1746,13 @@ class Run:
         if self.activation_function == "leaky_integrator":
             assert self.leaky_alpha >= 0.0 and self.leaky_alpha <= 1.0
         
-        self.continous_gamma = continous_gamma
-        if self.activation_function == "continous":
-            assert self.continous_gamma != None
+        self.continuous_gamma = continuous_gamma
+        if self.activation_function == "continuous":
+            assert self.continuous_gamma != None
 
         self.w_in_sparse = w_in_sparse
+
+        self.alpha_blend = alpha_blend
 
         self.andrews_matrix_creation = andrews_matrix_creation
         self.simplified_network = simplified_network
@@ -1673,7 +1773,7 @@ class Run:
             esnx.esn._n_type_flag = esnx.esn._n_type_flag_synonyms.get_flag(self.topology)
         else:
             esnx.esn.create_network(self.size, self.spectral_radius, self.average_degree, self.topology, rewire_probability=self.rewire_probability)
-        
+
         if self.simplified_network:
             _simplify_adjacency_matrix(esnx.esn, self.spectral_radius)
 
@@ -1683,9 +1783,10 @@ class Run:
             esnx.esn._act_fct_flag = self.activation_function
         esnx.esn._set_activation_function(esnx.esn._act_fct_flag)
         esnx.esn._alpha = self.leaky_alpha
-        esnx.esn._gamma = self.continous_gamma
+        esnx.esn._gamma = self.continuous_gamma
+        esnx.alpha_blend = self.alpha_blend
 
-        if self.continous_gamma != None:
+        if self.continuous_gamma != None:
             timescale = attractor_config.attractors[0].config.dt
             assert all(attractor.config.dt == timescale for attractor in attractor_config.attractors)
             esnx.esn._timescale = timescale
@@ -1723,9 +1824,9 @@ class Run:
             assert self.activation_function == "leaky_integrator"
             dict["leaky_alpha"] = self.leaky_alpha
 
-        if self.continous_gamma != None:
-            assert self.activation_function == "continous"
-            dict["continous_gamma"] = self.continous_gamma
+        if self.continuous_gamma != None:
+            assert self.activation_function == "continuous"
+            dict["continuous_gamma"] = self.continuous_gamma
 
         if self.w_in_sparse != None:
             dict["w_in_sparse"] = self.w_in_sparse
@@ -1735,6 +1836,9 @@ class Run:
 
         if self.andrews_matrix_creation:
             dict["andrews_matrix_creation"] = self.andrews_matrix_creation
+
+        if self.alpha_blend != None:
+            dict["alpha_blend"] = self.alpha_blend
 
         if len(self.measurements) > 0:
             dict["measurements"] = [[x.as_dict() for x in m] for m in self.measurements]
@@ -1764,12 +1868,15 @@ class Run:
             assert run.activation_function == "leaky_integrator"
             run.leaky_alpha = dict["leaky_alpha"]
 
-        if "continous_gamma" in dict:
-            assert run.activation_function == "continous"
-            run.continous_gamma = dict["continous_gamma"]
+        if "continuous_gamma" in dict:
+            assert run.activation_function == "continuous"
+            run.continuous_gamma = dict["continuous_gamma"]
 
         if "w_in_sparse" in dict:
             run.w_in_sparse = dict["w_in_sparse"]
+
+        if "alpha_blend" in dict:
+            run.alpha_blend = dict["alpha_blend"]
 
         run.simplified_network = ("simplified_network" in dict)
         run.andrews_matrix_creation = ("andrews_matrix_creation" in dict)

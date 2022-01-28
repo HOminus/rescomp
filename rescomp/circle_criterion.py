@@ -163,7 +163,7 @@ def list_to_check_if_LC_v3(x, sample_start, sample_end, FP_err_lim, FP_sample_st
     
     return period,periodic,z_C_Wout_alpha_maxset,z_C_Wout_alpha_minset
 
-def test_err_analysis(data, sample_start, sample_end, stepback, FP_err_lim, FP_sample_start, FP_sample_end, LC_err_tol, rounding_no):
+def test_err_analysis(data, sample_start, sample_end, stepback, FP_err_lim, FP_sample_start, FP_sample_end, LC_err_tol, LC_err_tol_v3, rounding_no):
     
     if all(i < FP_err_lim for i in abs(np.diff(data[:,1][-1000::50]))) == True:
         err_C = 3.0#Fixed Point

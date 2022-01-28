@@ -292,7 +292,7 @@ class ESN(_ESNCore):
         self._act_fct_flag_synonyms.add_synonyms(2, "tanh_squared")
         self._act_fct_flag_synonyms.add_synonyms(3, ["mixed", "mix"])
         self._act_fct_flag_synonyms.add_synonyms(4, "leaky_integrator")
-        self._act_fct_flag_synonyms.add_synonyms(5, "continous")
+        self._act_fct_flag_synonyms.add_synonyms(5, "continuous")
 
         # Dictionary defining synonyms for the different ways to create the
         # network. Internally the corresponding integers are used
@@ -505,7 +505,8 @@ class ESN(_ESNCore):
         self._act_fct_flag = self._act_fct_flag_synonyms.get_flag(act_fct_flag)
 
         self._bias_scale = bias_scale
-        self._bias = self._bias_scale * np.random.uniform(low=-1.0, high=1.0,
+        if bias_scale != 0:
+            self._bias = self._bias_scale * np.random.uniform(low=-1.0, high=1.0,
                                                           size=self._n_dim)
 
         if self._act_fct_flag == 0:
@@ -520,7 +521,7 @@ class ESN(_ESNCore):
         elif self._act_fct_flag == 4:
             self._act_fct = self._leaky_integrator_act_fct
         elif self._act_fct_flag == 5:
-            self._act_fct = self._continous_act_fct
+            self._act_fct = self._continuous_act_fct
         else:
             raise Exception('self._act_fct_flag %s does not have a activation '
                             'function implemented!' % str(self._act_fct_flag))
@@ -542,7 +543,7 @@ class ESN(_ESNCore):
     def _leaky_integrator_act_fct(self, x, r):
         return (1. - self._alpha) * r + self._alpha * np.tanh(self._w_in @ x + self._network @ r)
 
-    def _continous_act_fct(self, x, r):
+    def _continuous_act_fct(self, x, r):
         k1 = self._timescale * self._gamma * (-r + np.tanh(self._w_in @ x + self._network @ r))
 
         k2_r = r + k1 / 2

@@ -3,9 +3,9 @@
 # from . import *
 from . import simulations, utilities, measures, esn, esnx, locality_measures
 from .esn import ESN, ESNWrapper, ESNGenLoc
-from .esnx import DataConfig, LorenzConfig, HalvorsenConfig, GuanConfig, CircleConfig, AttractorConfig, ESNX, \
+from .esnx import DataConfig, LorenzConfig, HalvorsenConfig, RoesslerConfig, GuanConfig, CircleConfig, AttractorConfig, ESNX, \
     AttractorResult, MemcapResult, InubushiResult, TrainStateSpaceResult, SvdResult, VolumeResult, CircleResult, AdvancedNetworkAnalyzationResult, \
-    FlouqetAnalysisResult, Run, SimulationResult, AdvancedNetworkAnalyzationResult, StoreMatrixResult
+    FlouqetAnalysisResult, Run, SimulationResult, AdvancedNetworkAnalyzationResult, StoreMatrixResult, CircleResult2
 from .utilities import read_pickle
 from .simulations import simulate_trajectory
 from ._version import __version__
