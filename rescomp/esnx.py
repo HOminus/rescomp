@@ -305,10 +305,14 @@ class DataConfig:
     def as_dict(self):
         dict = {
             "type": type(self).__name__,
-            "position": tuple([self.position[i] for i in range(self.position.shape[0])]),
-            "scale": self.scale,
             "dt": self.dt
         }
+
+        if type(self.position) == np.ndarray:
+            dict["position"] = self.position.tolist()
+
+        if self.scale != None:
+            dict["scale"] = self.scale
 
         if type(self.starting_point) == np.ndarray:
             dict["starting_point"] = self.starting_point.tolist()
@@ -321,11 +325,17 @@ class DataConfig:
     
     @staticmethod
     def from_dict(dict):
-        scale = dict["scale"]
-        if len(dict["position"]) == 3:
+        scale = None
+        if "scale" in dict:
+            scale = dict["scale"]
+        if "position" in dict and len(dict["position"]) == 3:
             position = np.array([dict["position"][0], dict["position"][1], dict["position"][2]])
-        else:
+        elif "position" in dict:
+            assert len(dict["position"]) == 2
             position = np.array([dict["position"][0], dict["position"][1]])
+        else:
+            position = None
+
         rotation = None
         if "rotation" in dict:
             rotation = np.array([dict["rotation"][0], dict["rotation"][1], dict["rotation"][2]])
@@ -1431,8 +1441,6 @@ class CircleResult:
             "filt_C2": self.filt_C2,
         }
 
-        raise "CircleResult.as_dict: Not yet implemented"
-
     @staticmethod
     def from_dict(dict):
         cr = CircleResult()
@@ -1526,6 +1534,47 @@ class CircleResult2:
         self.relative_roundness_C2 = C2rel_roundness
         self.filt_C1 = err_C1filt
         self.filt_C2 = err_C2filt
+
+    def as_dict(self):
+        return {
+            "type": "CircleResult",
+            "version": "0.1.0", #Just in case I change something later
+            "sample_start": self.sample_start,
+            "sample_end": self.sample_end,
+            "stepback": self.stepback,
+            "FP_err_lim": self.FP_err_lim,
+            "FP_sample_start": self.FP_sample_start,
+            "FP_sample_end": self.FP_sample_end,
+            "LC_err_tol": self.LC_err_tol,
+
+            "err_C1": self.err_C1,
+            "err_C2": self.err_C2,
+            "relative_roundness_C1": self.relative_roundness_C1,
+            "relative_roundness_C2": self.relative_roundness_C2,
+            "filt_C1": self.filt_C1,
+            "filt_C2": self.filt_C2,
+        }
+    
+    @staticmethod
+    def from_dict(dict):
+        cr = CircleResult2()
+
+        cr.sample_start = dict["sample_start"]
+        cr.sample_end = dict["sample_end"]
+        cr.stepback = dict["stepback"]
+        cr.FP_err_lim = dict["FP_err_lim"]
+        cr.FP_sample_start = dict["FP_sample_start"]
+        cr.FP_sample_end = dict["FP_sample_end"]
+        cr.LC_err_tol = dict["LC_err_tol"]
+
+        cr.err_C1 = dict["err_C1"]
+        cr.err_C2 = dict["err_C2"]
+        cr.relative_roundness_C1 = dict["relative_roundness_C1"]
+        cr.relative_roundness_C2 = dict["relative_roundness_C2"]
+        cr.filt_C1 = dict["filt_C1"]
+        cr.filt_C2 = dict["filt_C2"]
+
+        return cr
 
 class AdvancedNetworkAnalyzationResult:
     class NodesAnalysis:
