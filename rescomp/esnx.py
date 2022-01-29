@@ -865,7 +865,7 @@ class AttractorResult:
 
             corr, lyap = attractor_data.actual_correlation_lyapunov(correlation, lyapunov)
             self.actual_correlation_dimension = corr
-            ar.prediction_lyapunov = lyap
+            self.prediction_lyapunov = lyap
 
         if self.last_n_rmse_size != None:
             self.last_n_rmse = attractor_data.rmse(self.last_n_rmse_size)
