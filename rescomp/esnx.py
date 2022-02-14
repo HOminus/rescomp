@@ -1217,6 +1217,112 @@ class InubushiResult:
 
         return ir
 
+class InubushiResult2:
+    def __init__(self, attractor_id: int, discard_steps: int, sync_steps: int, forward_steps: int, measurement_count: int, epsilon: float):
+        self.attractor_id: int = attractor_id
+        self.discard_steps = discard_steps
+        self.sync_steps = sync_steps
+        self.forward_steps = forward_steps
+        self.measurement_count = measurement_count
+        self.epsilon = epsilon
+        self.inubushi_total_memcap = None
+        self.inubushi_memcap = None
+        self.inubushi_mem_stddev = None
+
+    def measure(self, esnx: ESNX):
+        result = np.zeros((self.forward_steps, 0))
+
+        for _ in range(self.measurement_count):
+            attractor_config = esnx.attractor_config[self.attractor_id].config
+
+            randomized_start_offset = None
+            if type(attractor_config) == CircleConfig:
+                randomized_start_offset = 2 * math.pi * np.random.rand()
+            else:
+                randomized_start_offset = np.random.rand((3))
+
+            total_time_steps = self.discard_steps + self.sync_steps + self.forward_steps
+            data, _, _, _ = attractor_config.generate_data(self.discard_steps, total_time_steps, randomized_start_offset)
+
+            if esnx.esn._act_fct_flag == esnx.esn._act_fct_flag_synonyms.get_flag("tanh_simple"):
+                raise NotImplementedError("InubushiResult2.measure: Not yet implemented for 'tanh_simple' activation function.")
+            elif esnx.esn._act_fct_flag == esnx.esn._act_fct_flag_synonyms.get_flag("leaky_integrator"):
+                current_result = self._measure_with_leaky_integrator(esnx, data)
+            else:
+                raise ValueError(f"InubushiResult.measure: Activation function {esnx.esn._act_fct_flag} not supported")
+
+            result = np.hstack((result, current_result.reshape(self.forward_steps, 1)))
+
+        self.inubushi_memcap = np.average(result, axis = 1).T
+        self.inubushi_total_memcap = np.sum(self.inubushi_memcap)
+        self.inubushi_mem_stddev = np.std(result, axis = 1).T
+
+    def _measure_with_leaky_integrator(self, esnx: ESNX, data):
+        sync = data[:self.sync_steps]
+        esnx.esn.synchronize(sync)
+        data = data[self.sync_steps:]
+        deviations = _create_orthogonal_matrix(esnx.esn._n_dim, self.epsilon)
+
+        current_s = data[0]
+        current_r = esnx.esn._last_r
+
+        deviated_r = deviations + current_r.reshape((esnx.esn._n_dim, 1))
+
+        result = np.zeros((self.forward_steps, esnx.esn._n_dim))
+        
+        for k in range(result.shape[1]):
+            result[0, k] = np.linalg.norm(deviated_r[:,k] - current_r)
+
+        dense_network = esnx.esn._network.todense()
+        for t in range(1, result.shape[0]):
+            deviated_r = (1 - esnx.esn._alpha) * deviated_r + esnx.esn._alpha * np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ deviated_r)
+            current_r = (1 - esnx.esn._alpha) * current_r + esnx.esn._alpha * np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)
+            current_s = data[t]
+
+            for k in range(result.shape[1]):
+                result[t, k] = np.linalg.norm(deviations[:, k] - current_t)
+
+        return np.average(result, axis=1)
+
+    def as_dict(self, save_stddev: bool = True):
+        assert type(self.inubushi_memcap) == np.ndarray
+        dict = {
+            "type": "InubushiResult2",
+            "attractor_id": self.attractor_id,
+            "discard_steps": self.discard_steps,
+            "sync_steps": self.sync_steps,
+            "forward_steps": self.forward_steps,
+            "measurement_count": self.measurement_count,
+            "epsilon": self.epsilon,
+            "inubushi_total_memcap": self.inubushi_total_memcap,
+            "inubushi_memcap": base64.b85encode(self.inubushi_memcap.astype('float32').tobytes()).decode('ASCII')
+        }
+
+        if save_stddev:
+            dict["inubushi_mem_stddev"] = base64.b85encode(self.inubushi_mem_stddev.astype('float32').tobytes()).decode('ASCII')
+        
+        return dict
+
+    @staticmethod
+    def from_dict(dict):
+        attractor_id = dict["attractor_id"]
+        discard_steps = dict["discard_steps"]
+        sync_steps = dict["sync_steps"]
+        forward_steps = dict["forward_steps"]
+        measurement_count = dict["measurement_count"]
+        epsilon = dict["epsilon"]
+
+        ir = InubushiResult2(attractor_id, discard_steps, sync_steps, forward_steps, measurement_count, epsilon)
+
+        ir.inubushi_total_memcap = dict["inubushi_total_memcap"]
+        ir.inubushi_memcap = np.frombuffer(base64.b85decode(dict["inubushi_memcap"]), dtype='float32')
+
+        if "inubushi_mem_stddev" in dict:
+            ir.inubushi_mem_stddev = np.frombuffer(base64.b85decode(dict["inubushi_mem_stddev"]), dtype='float32')
+
+        return ir
+
+
 class TrainStateSpaceResult:
     def __init__(self, minimum_distance, maximum_distance):
         self.minimum_distance = minimum_distance
@@ -1537,7 +1643,7 @@ class CircleResult2:
 
     def as_dict(self):
         return {
-            "type": "CircleResult",
+            "type": "CircleResult2",
             "version": "0.1.0", #Just in case I change something later
             "sample_start": self.sample_start,
             "sample_end": self.sample_end,
@@ -1941,12 +2047,16 @@ class Run:
                         measurements += [MemcapResult.from_dict(x)]
                     elif x["type"] == "InubushiResult":
                         measurements += [InubushiResult.from_dict(x)]
+                    elif x["type"] == "InubushiResult2":
+                        measurements += [InubushiResult2.from_dict(x)]
                     elif x["type"] == "SvdResult":
                         measurements += [SvdResult.from_dict(x)]
                     elif x["type"] == "VolumeResult":
                         measurements += [VolumeResult.from_dict(x)]
                     elif x["type"] == "CircleResult":
                         measurements += [CircleResult.from_dict(x)]
+                    elif x["type"] == "CircleResult2":
+                        measurements += [CircleResult2.from_dict(x)]
                     elif x["type"] == "AdvancedNetworkAnalyzationResult":
                         measurements += [AdvancedNetworkAnalyzationResult.from_dict(x)]
                     elif x["type"] == "TrainStateSpaceResult":
