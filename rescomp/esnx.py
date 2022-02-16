@@ -1266,7 +1266,9 @@ class InubushiResult2:
         current_s = data[0]
         current_r = esnx.esn._last_r
 
+        save_shape = current_r.shape
         deviated_r = deviations + current_r.reshape((esnx.esn._n_dim, 1))
+        current_r.reshape(save_shape)
 
         result = np.zeros((self.forward_steps, esnx.esn._n_dim))
         
@@ -1275,12 +1277,12 @@ class InubushiResult2:
 
         dense_network = esnx.esn._network.todense()
         for t in range(1, result.shape[0]):
-            deviated_r = (1 - esnx.esn._alpha) * deviated_r + esnx.esn._alpha * np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ deviated_r)
+            deviated_r = (1 - esnx.esn._alpha) * deviated_r + esnx.esn._alpha * np.tanh((esnx.esn._w_in @ current_s).reshape((esnx.esn._n_dim, 1)) + esnx.esn._network @ deviated_r)
             current_r = (1 - esnx.esn._alpha) * current_r + esnx.esn._alpha * np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)
             current_s = data[t]
-
+            
             for k in range(result.shape[1]):
-                result[t, k] = np.linalg.norm(deviations[:, k] - current_t)
+                result[t, k] = np.linalg.norm(deviated_r[:, k] - current_r)
 
         return np.average(result, axis=1)
 
