@@ -161,7 +161,7 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
 
     minimum_index_distance = math.ceil(minimum_time_distance / dt)
     rs = np.logspace(np.log10(r_min), np.log(r_max), r_points)
-    
+
     tree = scipy.spatial.KDTree(data)
     N_r = np.array(tree.count_neighbors(tree, rs), dtype=float) / data.shape[0]
     N_r = np.vstack((rs, N_r))
@@ -180,36 +180,14 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
 
         if len(neighbours) == 0:
             continue
-        # If points belong to the same trajecotry, only take the closest one
-        neighbours.sort()
-        closest_neighbours = []
 
-        last_index = neighbours[0]
-        current_minimum_index = neighbours[0]
-        current_minimum_distance = np.linalg.norm(point - data[current_minimum_index,])
-        for i in range(1, len(neighbours)):
-            current_index = neighbours[i]
-            if current_index == last_index + 1:
-                current_distance = np.linalg.norm(point - data[current_index,])
-                if current_distance <= current_minimum_distance:
-                    current_minimum_index = current_index
-                    current_minimum_distance = current_distance
-            else:
-                closest_neighbours += [current_minimum_index]
-                current_minimum_index = current_index
-                current_minimum_distance = np.linalg.norm(point - data[neighbours])
-            last_index = current_index
-        closest_neighbours += [current_minimum_index]
-
-
-        closest_neighbours = neighbours
         data_point_counts += 1
         for tau_index, time_offset in enumerate(tau_index_offsets):
             distance_sum = 0
         
-            for neighbour in closest_neighbours:
+            for neighbour in neighbours:
                 distance_sum += np.linalg.norm(data[index + time_offset] - data[neighbour + time_offset])
-            S_tau[tau_index] += np.log(distance_sum / len(closest_neighbours))
+            S_tau[tau_index] += np.log(distance_sum / len(neighbours))
 
     if data_point_counts != 0:
         lyapunov = 1. / data_point_counts * (S_tau[-1] - S_tau[0]) / (taus[-1] - taus[0])
