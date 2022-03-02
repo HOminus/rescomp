@@ -175,17 +175,41 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
     data_point_counts = 0
     for index in range(data.shape[0] - tau_index_offsets[-1]):
         point = data[index,]
-        neighbors = tree.query_ball_point(point, epsilon_distance)
-        neighbors = list(filter(lambda i: abs(index - i) >= minimum_index_distance and i + tau_index_offsets[-1] < data.shape[0], neighbors))
-        neighbors_len = len(neighbors)
+        neighbours = tree.query_ball_point(point, epsilon_distance)
+        neighbours = list(filter(lambda i: abs(index - i) >= minimum_index_distance and i + tau_index_offsets[-1] < data.shape[0], neighbours))
 
-        if neighbors_len != 0:
-            data_point_counts += 1
-            for tau_index, time_offset in enumerate(tau_index_offsets):
-                distance_sum = 0
-                for neighbor in neighbors:
-                    distance_sum += np.linalg.norm(data[index + time_offset] - data[neighbor + time_offset])
-                S_tau[tau_index] += np.log(distance_sum / neighbors_len)
+        if len(neighbours) == 0:
+            continue
+        # If points belong to the same trajecotry, only take the closest one
+        neighbours.sort()
+        closest_neighbours = []
+
+        last_index = neighbours[0]
+        current_minimum_index = neighbours[0]
+        current_minimum_distance = np.linalg.norm(point - data[current_minimum_index,])
+        for i in range(1, len(neighbours)):
+            current_index = neighbours[i]
+            if current_index == last_index + 1:
+                current_distance = np.linalg.norm(point - data[current_index,])
+                if current_distance <= current_minimum_distance:
+                    current_minimum_index = current_index
+                    current_minimum_distance = current_distance
+            else:
+                closest_neighbours += [current_minimum_index]
+                current_minimum_index = current_index
+                current_minimum_distance = np.linalg.norm(point - data[neighbours])
+            last_index = current_index
+        closest_neighbours += [current_minimum_index]
+
+
+        closest_neighbours = neighbours
+        data_point_counts += 1
+        for tau_index, time_offset in enumerate(tau_index_offsets):
+            distance_sum = 0
+        
+            for neighbour in closest_neighbours:
+                distance_sum += np.linalg.norm(data[index + time_offset] - data[neighbour + time_offset])
+            S_tau[tau_index] += np.log(distance_sum / len(closest_neighbours))
 
     if data_point_counts != 0:
         lyapunov = 1. / data_point_counts * (S_tau[-1] - S_tau[0]) / (taus[-1] - taus[0])
@@ -685,9 +709,16 @@ class AttractorData:
     @staticmethod
     def _correlation_lyapunov(data, correlation: bool, lyapunov: bool, 
                         correlation_dimension_params: CorrelationDimensionComputationParameters,
-                        lyapunov_params: LyapunovComputationParameters, last_n: int):
+                        lyapunov_params: LyapunovComputationParameters, dt: float, last_n: int):
         if (correlation and lyapunov):
-            raise "AttractorData._correlation_lyapunov: Lyapunov with correlation measurement is currently disabled"
+            min_t_dst = lyapunov_params.minimum_time_distance
+            epsilon = lyapunov_params.epsilon
+            tau_begin = lyapunov_params.tau_begin
+            tau_end = lyapunov_params.tau_end
+            r_min = correlation_dimension_params.r_min
+            r_max = correlation_dimension_params.r_max
+            if last_n == None:
+                return lyapunov_kantz_and_correlation_dimension(data, dt, min_t_dst, epsilon, tau_begin, tau_end, 2, r_min, r_max, 2)
         elif lyapunov:
             raise "AttractorData._correlation_lyapunov: Lyapunov measurement is currently disabled"
         elif correlation:
@@ -705,11 +736,11 @@ class AttractorData:
         # Only call this method after the esn did a prediction
         # since otherwise true_prediction contains also the prediction sync data
         assert type(self.esn_prediction) == np.ndarray
-        return AttractorData._correlation_lyapunov(self.true_prediction, correlation, lyapunov, self.correlation_dimension_parameters, self.lyapunov_parameters,last_n)
+        return AttractorData._correlation_lyapunov(self.true_prediction, correlation, lyapunov, self.correlation_dimension_parameters, self.lyapunov_parameters, self.config.dt, last_n)
 
     def prediction_correlation_lyapunov(self, correlation: bool, lyapunov: bool, last_n = None):
         assert type(self.esn_prediction) == np.ndarray 
-        return AttractorData._correlation_lyapunov(self.esn_prediction, correlation, lyapunov, self.correlation_dimension_parameters, self.lyapunov_parameters, last_n)
+        return AttractorData._correlation_lyapunov(self.esn_prediction, correlation, lyapunov, self.correlation_dimension_parameters, self.lyapunov_parameters, self.config.dt, last_n)
 
     def plot_prediction(self):
         assert type(self.esn_prediction) == np.ndarray
