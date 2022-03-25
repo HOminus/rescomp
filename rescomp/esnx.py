@@ -696,7 +696,10 @@ class AttractorData:
             r_min = correlation_dimension_params.r_min
             r_max = correlation_dimension_params.r_max
             if last_n == None:
-                return lyapunov_kantz_and_correlation_dimension(data, dt, min_t_dst, epsilon, tau_begin, tau_end, 2, r_min, r_max, 2)
+                lyap, corr =  lyapunov_kantz_and_correlation_dimension(data, dt, min_t_dst, epsilon, tau_begin, tau_end, 2, r_min, r_max, 2)
+            else:
+                lyap, corr = lyapunov_kantz_and_correlation_dimension(data[-last_n:,], dt, min_t_dst, tau_begin, tau_end, 2, r_min, r_max, 2)
+            return corr, lyap
         elif lyapunov:
             raise "AttractorData._correlation_lyapunov: Lyapunov measurement is currently disabled"
         elif correlation:
@@ -761,7 +764,7 @@ class TrainStateCapture:
 
     def capture(self, esnx):
         self.r_captures += [esnx.esn._r_train]
-        self.x_captures += [esnx.esn._x_train]
+        self.x_captures += [esnx.esn._x_train[:-1]]
 
 class ESNX:
     def __init__(self, attractor_config: AttractorConfig):
@@ -1966,6 +1969,13 @@ class Run:
 
         return esnx
 
+    def get_esnx_with_matrices(self, w_in, m, w_out, attractor_config: AttractorConfig) -> ESNX:
+        esnx = self.get_esnx(attractor_config)
+        esnx.esn._w_in = w_in
+        esnx.esn._network = scipy.sparse.csr_matrix(network)
+        esnx.esn._w_out = w_out
+        return esnx
+
     def add_esnx_measurements(self, *measurements):
         self.measurements += [measurements]
 
@@ -2176,10 +2186,10 @@ class AdvancedNetworkAnalyzation:
     def __init__(self, esnx: ESNX, train_state_capture: TrainStateCapture):
         self.n_dim = esnx.esn._n_dim
         self.x_dim = esnx.esn._x_dim
-        self.train_steps = train_states.x_captures[0].shape[0]
+        self.train_steps = train_state_capture.x_captures[0].shape[0]
         self.degree_vector = self._get_in_degrees(esnx.esn)
-        self.w_in = copy.deepcopy(esn._w_in)
-        self.w_out = np.hstack((esn._w_out.T[:self.n_dim,], esn._w_out.T[self.n_dim:,]))
+        self.w_in = copy.deepcopy(esnx.esn._w_in)
+        self.w_out = np.hstack((esnx.esn._w_out.T[:self.n_dim,], esnx.esn._w_out.T[self.n_dim:,]))
         self.train_state_capture = train_state_capture
         
         self.is_permutated_by_degree = False
@@ -2205,9 +2215,9 @@ class AdvancedNetworkAnalyzation:
             permutation_index = permutation_degree_vector[row][1]
             new_degree_vector[row] = self.degree_vector[permutation_index]
             new_w_in[row,:] = self.w_in[permutation_index,:]
-            new_w_out[:,row] = self.w_out[:,permutation_index]
+            new_w_out[row,:] = self.w_out[permutation_index,:]
             for train_state_index in range(len(new_train_states)):
-                new_train_states[train_state_index][:, row] = self.train_states[train_state_index][:, permutation_index]
+                new_train_states[train_state_index][:, row] = self.train_state_capture.r_captures[train_state_index][:, permutation_index]
 
         self.degree_vector = new_degree_vector
         self.w_in = new_w_in
@@ -2235,7 +2245,6 @@ class AdvancedNetworkAnalyzation:
     def stddev(self, nth: int):
         print("Capture state shape: ", self.train_state_capture[nth].shape) # TODO: remove!
         return np.average(self.train_state_capture.r_captures[nth], axis = 0)
-
 
     def as_dict(self):
         result = {
@@ -2280,7 +2289,7 @@ class AdvancedNetworkAnalyzation:
 
         img0 = ax0.imshow(self.train_state_capture.x_captures[nth].T, interpolation='nearest')
         ax1.imshow(self.w_in, interpolation='nearest', vmin=-1., vmax=1.)
-        img = ax2.imshow(self.train_state_capture.r_capture[nth].T, interpolation='nearest', vmin=-1., vmax=1.)
+        img = ax2.imshow(self.train_state_capture.r_captures[nth].T, interpolation='nearest', vmin=-1., vmax=1.)
         ax3.imshow(corr, interpolation='nearest', vmin=-1., vmax=1.)
 
         ax4.imshow(self.w_out, interpolation='nearest', vmin=-1., vmax=1.)
