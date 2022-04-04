@@ -1696,75 +1696,6 @@ class CircleResult2:
 
         return cr
 
-class AdvancedNetworkAnalyzationResult:
-    class NodesAnalysis:
-        def __init__(self, attractor_id: int):
-            self.attractor_id = attractor_id
-            self.correlations = None
-            self.averages = None
-            self.stddev = None
-
-        @staticmethod
-        def measure(attractor_id: int, ana):
-            nc = NodeCorrelation(attractor_id)
-            nc.correlations = ana.correlation_input_state(nc.attractor_id)
-            nc.averages = ana.average(nc.attractor_id)
-            nc.stddev = ana.stddev(nc.attractor_id)
-            return nc
-
-        def as_dict(self):
-            raise NotImplementedError("NodesAnalysis.from_dict: Not yet implemented")
-
-        @staticmethod
-        def from_dict(self):
-            raise NotImplementedError("NodesAnalysis.as_dict: Not yet implemented")
-
-    def __init__(self, nodes_degree, input_coupling, output_coupling):
-        self.nodes_degree = nodes_degree
-        self.nodes_input_coupling = input_coupling
-        self.nodes_output_coupling = output_coupling
-
-        self.nodes_analysis: list[NodesAnalysis] = []
-        
-    @staticmethod
-    def measure(esnx, ana):
-        assert ana.is_permutated_by_degree == True
-        anar = AdvancedNetworkAnalyzationResult(ana.degree_vector, ana.w_in, ana.w_out)
-
-        for i in range(len(ana.train_state_capture.r_captures)):
-            anar.nodes_analysis += [AdvancedNetworkAnalyzationResult.NodesAnalysis.measure(i, ana)]
-        
-        return anar
-
-    def as_dict(self):
-        dict = {
-            "type": "AdvancedNetworkAnalyzationResult",
-            "nodes_degree": base64.b85encode(self.nodes_degree.astype('float32').tobytes()).decode('ASCII'),
-            "nodes_input_coupling": base64.b85encode(self.nodes_input_coupling.astype('float32').tobytes()).decode('ASCII'),
-            "nodes_output_coupling": base64.b85encode(self.nodes_output_coupling.astype('float32').tobytes()).decode('ASCII')
-        }
-        dict["nodes_analysis"] = [analysis.to_dict() for analysis in self.nodes_analysis]
-
-    @staticmethod
-    def from_dict(dict):
-        nodes_degree = np.frombuffer(base64.b85decode(dict["nodes_degree"]), dtype='float32')
-        node_count = nodes_degree.shape[0]
-
-        input_coupling = np.frombuffer(base64.b85decode(dict["nodes_degree"]), dtype='float32')
-        assert input_coupling.shape[0] % node_count == 0
-        iinput_coupling = input_coupling.reshape((node_count, iinput_coupling.shape[0] / nodes_count))
-
-        output_coupling = np.frombuffer(base64.b85decode(dict["nodes_output_coupling"]), dtype='float32')
-        assert output_coupling.shape[0] % node_count == 0
-        output_coupling = output_coupling.reshape((node_count, output_coupling.shape[0] / nodes_count))
-
-        anar = AdvancedNetworkAnalyzationResult(nodes_degree, input_coupling, output_coupling)
-
-        for node_analysis in dict["nodes_analysis"]:
-            anar.nodes_analysis += [AdvancedNetworkAnalyzationResult.NodesAnalysis.from_dict(node_analysis)]
-
-        return anar
-
 class FlouqetAnalysisResult:
     def __init__(self, attractor_id: int, eigenvalues: np.ndarray):
         self.attractor_id = attractor_id
@@ -1856,10 +1787,11 @@ class StoreMatrixResult:
     unique_id = 1
 
     class StoreMatrixValue:
-        def __init__(self, w_in, m, w_out):
+        def __init__(self, w_in, m, w_out, tsc: TrainStateCapture):
             self.w_in = w_in
             self.m = m
             self.w_out = w_out
+            self.tsc = tsc
 
     def __init__(self, path: str):
         self.filepath = path
@@ -1867,7 +1799,7 @@ class StoreMatrixResult:
     def load(self):
         with open(self.filepath, 'rb') as file:
             smv = pickle.load(file, encoding='bytes')
-        return smv.w_in, smv.m, smv.w_out
+        return smv.w_in, smv.m, smv.w_out, smv.tsc
 
     @staticmethod
     def unique_filename():
@@ -1876,9 +1808,9 @@ class StoreMatrixResult:
         return name
 
     @staticmethod
-    def measure(esnx: ESNX, filepath: str, fileprefix: str):
+    def measure(esnx: ESNX, tsc: TrainStateCapture,  filepath: str, fileprefix: str):
         total_path = f"{filepath}/{fileprefix}_{StoreMatrixResult.unique_filename()}"
-        smv = StoreMatrixResult.StoreMatrixValue(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out)
+        smv = StoreMatrixResult.StoreMatrixValue(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out, tsc)
         with open(total_path, 'wb') as file:
             pickle.dump(smv, file)
         return StoreMatrixResult(total_path)
@@ -1969,11 +1901,38 @@ class Run:
 
         return esnx
 
-    def get_esnx_with_matrices(self, w_in, m, w_out, attractor_config: AttractorConfig) -> ESNX:
-        esnx = self.get_esnx(attractor_config)
-        esnx.esn._w_in = w_in
+    def get_esnx_with_matrices(self, w_in, network, w_out, attractor_config: AttractorConfig) -> ESNX:
+        esnx = ESNX(attractor_config)
+        esnx.input_strength = self.input_strength
+
         esnx.esn._network = scipy.sparse.csr_matrix(network)
+        esnx.esn._n_dim = self.size
+        esnx.esn._n_rad = self.spectral_radius
+        esnx.esn._n_avg_deg = self.average_degree
+        esnx.esn._n_edge_prob = self.average_degree / (self.size - 1)
+        esnx.esn._n_type_flag = esnx.esn._n_type_flag_synonyms.get_flag(self.topology)
+
+        if self.activation_function == None:
+            esnx.esn._act_fct_flag = "tanh_simple"
+        else:
+            esnx.esn._act_fct_flag = self.activation_function
+        esnx.esn._set_activation_function(esnx.esn._act_fct_flag)
+        esnx.esn._alpha = self.leaky_alpha
+        esnx.esn._gamma = self.continuous_gamma
+        esnx.alpha_blend = self.alpha_blend
+
+        if self.continuous_gamma != None:
+            timescale = attractor_config.attractors[0].config.dt
+            assert all(attractor.config.dt == timescale for attractor in attractor_config.attractors)
+            esnx.esn._timescale = timescale
+
+        esnx.esn._reg_param = self.regression
+        esnx.esn._w_out_fit_flag = esnx.esn._w_out_fit_flag_synonyms.get_flag(self.readout)
+        
+        esnx.esn._x_dim = w_in.shape[1]
+        esnx.esn._w_in = w_in
         esnx.esn._w_out = w_out
+
         return esnx
 
     def add_esnx_measurements(self, *measurements):
@@ -2023,9 +1982,9 @@ class Run:
 
     @staticmethod
     def from_dict(dict):
-        size = dict["size"]
+        size = int(dict["size"])
         spectral_radius = dict["spectral_radius"]
-        average_degree = dict["average_degree"]
+        average_degree = int(dict["average_degree"])
         regression = dict["regression"]
         input_strength = dict["input_strength"]
         readout = dict["readout"]
@@ -2243,39 +2202,7 @@ class AdvancedNetworkAnalyzation:
         return np.average(self.train_state_capture.r_captures[nth], axis = 0)
 
     def stddev(self, nth: int):
-        print("Capture state shape: ", self.train_state_capture[nth].shape) # TODO: remove!
-        return np.average(self.train_state_capture.r_captures[nth], axis = 0)
-
-    def as_dict(self):
-        result = {
-            "version": "2.0.0",
-            "n_dim": self.ndim,
-            "x_dim": self.x_dim,
-            "train_steps": self.train_steps,
-            "degree_vector": base64.b85encode(self.degree_vector.tobytes()),
-            "w_out": base64.b85encode(self.w_out.tobytes()),
-        }
-        for i, state in enumerate(self.train_states):
-            result[f"train_state_{i}"] = base64.b85decode(state.tobytes())
-        return result
-
-    @staticmethod
-    def from_dict(dict):
-        ana = AdvancedNetworkAnalyzation()
-        ana.n_dim = dict["n_dim"]
-        ana.x_dim = dict["x_dim"]
-        ana.train_steps = dict["train_steps"]
-        ana.degree_vector = np.frombuffer(base64.b85decode(dict["degree_vector"])).reshape((ana.n_dim, 1))
-        ana.w_out = np.frombuffer(base64.b85decode(dict["w_out"])).reshape((ana.x_dim, ana.n_dim))
-
-        train_states = []
-        for i in range(100):
-            if f"train_state_{i}" in dict:
-                train_states.append(np.frombuffer(base64.b85decode(dict[f"train_state_{i}"])).reshape((ana.train_steps, ana.n_dim)))
-            else:
-                break
-        ana.train_states = tuple(train_states)
-        return ana
+        return np.std(self.train_state_capture.r_captures[nth], axis = 0)
 
     def draw_nth(self, nth):
         fig = plt.figure()
