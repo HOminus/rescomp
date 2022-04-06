@@ -723,17 +723,19 @@ class AttractorData:
         assert type(self.esn_prediction) == np.ndarray 
         return AttractorData._correlation_lyapunov(self.esn_prediction, correlation, lyapunov, self.correlation_dimension_parameters, self.lyapunov_parameters, self.config.dt, last_n)
 
-    def plot_prediction(self):
+    def plot_prediction(self, last_n):
         assert type(self.esn_prediction) == np.ndarray
         
         x_dim = self.true_prediction.shape[1]
+        if last_n == None:
+            last_n = 0
         if x_dim == 3:
             ax = plt.axes(projection="3d")
-            ax.plot(self.true_prediction[:,0], self.true_prediction[:,1], self.true_prediction[:,2], label="Data")
-            ax.plot(self.esn_prediction[:,0], self.esn_prediction[:,1], self.esn_prediction[:,2], label="ESN Prediction")
+            ax.plot(self.true_prediction[-last_n:,0], self.true_prediction[-last_n:,1], self.true_prediction[-last_n:,2], label="Data")
+            ax.plot(self.esn_prediction[-last_n:,0], self.esn_prediction[-last_n:,1], self.esn_prediction[-last_n:,2], label="ESN Prediction")
         elif x_dim == 2:
-            plt.plot(self.true_prediction[:, 0], self.true_prediction[:, 1], label="Data")
-            plt.plot(self.esn_prediction[:, 0], self.esn_prediction[:, 1], label="ESN Prediction")
+            plt.plot(self.true_prediction[-last_n:, 0], self.true_prediction[-last_n:, 1], label="Data")
+            plt.plot(self.esn_prediction[-last_n:, 0], self.esn_prediction[-last_n:, 1], label="ESN Prediction")
         else:
             raise ValueError(f"AttractorData.plot_prediction: Dimension {x_dim} not supported.")
 
