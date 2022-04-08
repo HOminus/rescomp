@@ -1406,6 +1406,8 @@ class VolumeResult:
     def __init__(self):
         self.volume = None
         self.normalized_volume = None
+        self.bias_independent_volume = None
+        self.bias_independent_normalized_volume = None
 
     @staticmethod
     def measure(esnx: ESNX):
@@ -1423,6 +1425,20 @@ class VolumeResult:
             b = b / v2
             c = c / v3
             vr.normalized_volume = np.abs(np.dot(a, np.cross(b, c)))
+
+            if esnx.esn._w_out_fit_flag == esnx.esn._w_out_fit_flag_synonyms.get_flag("bias_and_square_r") or \
+                esnx.esn._w_out_fit_flag == esnx.esn._w_out_fit_flag_synonyms.get_flag("output_bias"):
+                x1 = esnx.esn._w_out[0,:-1]
+                y1 = esnx.esn._w_out[1,:-1]
+                z1 = esnx.esn._w_out[2,:-1]
+
+                a, b, c, v1, v2, v3 = _project_to_3d(x1, y1, z1)
+                vr.bias_independent_volume = np.abs(np.dot(a, np.cross(b, c)))
+            
+                a = a / v1
+                b = b / v2
+                c = c / v3
+                vr.bias_independent_normalized_volume = np.abs(np.dot(a, np.cross(b, c)))
                 
         elif esnx.esn._x_dim == 2:
             x1 = esnx.esn._w_out[0,:]
@@ -1434,7 +1450,7 @@ class VolumeResult:
             y1 = y1 / np.linalg.norm(y1)
             vr.normalized_volume = np.abs(np.dot(x1, y1))
 
-        return vr            
+        return vr
 
 
     def as_dict(self):
@@ -1448,6 +1464,12 @@ class VolumeResult:
         if self.normalized_volume != None:
             dict["normalized_volume"] = self.normalized_volume
 
+        if self.bias_independent_volume != None:
+            dict["bias_independent_volume"] = self.bias_independent_volume
+
+        if self.bias_independent_normalized_volume != None:
+            dict["bias_independent_normalized_volume"] = self.bias_independent_normalized_volume
+
         return dict        
 
     @staticmethod
@@ -1459,6 +1481,12 @@ class VolumeResult:
 
         if "normalized_volume" in dict:
             volume.normalized_volume = dict["normalized_volume"]
+
+        if "bias_independent_volume" in dict:
+            volume.bias_independent_volume = dict["bias_independent_volume"]
+
+        if "bias_independent_normalized_volume" in dict:
+            volume.bias_independent_normalized_volume = dict["bias_independent_normalized_volume"]
 
         return volume
 
