@@ -1398,15 +1398,10 @@ class TrainStateSpaceResult:
         r1 = tsc.r_captures[0]
         r2 = tsc.r_captures[1]
 
-        min_distance = np.finfo('d').max
-        max_distance = 0
-        for state1 in r1:
-            distance_matrix = np.linalg.norm(r2 - state1)
-            current_min = np.min(distance_matrix, axis=1)
-            current_max = np.max(distance_matrix, axis=1)
+        distance_matrix = scipy.spatial.distance.cdist(r1, r2).flatten()
 
-            min_distance = min(min_distance, current_min)
-            max_distance = max(max_distance, current_max)
+        min_distance = np.min(distance_matrix)
+        max_distance = np.max(distance_matrix)
 
         return TrainStateSpaceResult(min_distance, max_distance)   
 
