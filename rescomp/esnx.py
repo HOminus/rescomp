@@ -1338,6 +1338,53 @@ class InubushiResult2:
 
         return ir
 
+class InubushiResult3:
+    def __init__(self, attractor_id: int, discard_steps: int, sync_steps: int, forward_steps: int, epsilon: float):
+        self.attractor_id = attractor_id
+        self.discard_steps = discard_steps
+        self.sync_steps = sync_steps
+        self.forward_steps = forward_steps
+        self.epsilon = epsilon
+
+    def measure(self, esnx: ESNX) -> np.ndarray:
+        attractor_config = esnx.attractor_config[self.attractor_id].config
+
+        randomized_start_offset = None
+        if type(attractor_config) == CircleConfig:
+            randomized_start_offset = 2 * math.pi * np.random.rand()
+        else:
+            randomized_start_offset = np.random.rand((3))
+
+        total_time_steps = self.discard_steps + self.sync_steps + self.forward_steps
+        data, _, _, _ = attractor_config.generate_data(self.discard_steps, total_time_steps, randomized_start_offset)
+
+        sync = data[:self.sync_steps]
+        esnx.esn.synchronize(sync)
+        data = data[self.sync_steps:]
+        deviations = _create_orthogonal_matrix(esnx.esn._n_dim, self.epsilon)
+
+        current_s = data[0]
+        current_r = esnx.esn._last_r
+
+        save_shape = current_r.shape
+        deviated_r = deviations + current_r.reshape((esnx.esn._n_dim, 1))
+        current_r.reshape(save_shape)
+
+        result = np.zeros((self.forward_steps, esnx.esn._n_dim))
+
+        for k in range(result.shape[1]):
+            result[0, k] = np.linalg.norm(deviated_r[:,k] - current_r)
+
+        dense_network = esnx.esn._network.todense()
+        for t in range(1, result.shape[0]):
+            deviated_r = (1 - esnx.esn._alpha) * deviated_r + esnx.esn._alpha * np.tanh((esnx.esn._w_in @ current_s).reshape((esnx.esn._n_dim, 1)) + esnx.esn._network @ deviated_r)
+            current_r = (1 - esnx.esn._alpha) * current_r + esnx.esn._alpha * np.tanh(esnx.esn._w_in @ current_s + esnx.esn._network @ current_r)
+            current_s = data[t]
+            
+            for k in range(result.shape[1]):
+                result[t, k] = np.linalg.norm(deviated_r[:, k] - current_r)
+
+        return result
 
 class TrainStateSpaceResult:
     def __init__(self, minimum_distance, maximum_distance):
