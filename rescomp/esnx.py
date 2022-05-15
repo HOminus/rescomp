@@ -168,6 +168,9 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
 
     dimension = (np.log(N_r[1,1]) - np.log(N_r[1,0]))/(np.log(N_r[0,1]) - np.log(N_r[0,0]))
 
+    if abs(dimension) <= 5e-2: # lyapunov computation is to expensive otherwise
+        return 0., dimension
+    
     taus = np.linspace(tau_begin, tau_end, tau_points)
     tau_index_offsets = np.array([round(tau/dt) for tau in taus])
     S_tau = np.zeros(tau_points)
@@ -187,7 +190,8 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
         
             for neighbour in neighbours:
                 distance_sum += np.linalg.norm(data[index + time_offset] - data[neighbour + time_offset])
-            S_tau[tau_index] += np.log(distance_sum / len(neighbours))
+            if distance_sum != 0:
+                S_tau[tau_index] += np.log(distance_sum / len(neighbours))
 
     if data_point_counts != 0:
         lyapunov = 1. / data_point_counts * (S_tau[-1] - S_tau[0]) / (taus[-1] - taus[0])
@@ -470,12 +474,9 @@ class RoesslerConfig(DataConfig):
         self.b = b
         self.c = c
 
-    def error_bounds(self):
-        if self.a == 0.1 and self.b == 0.1 and self.c == 14:
-            raise NotImplementedError("RoesslerConfig.error_bounds: Not yet implemented")
-        raise ValueError(f"RoesslerConfig.error_bounds: No error bounds for {self.a} {self.b} {self.c}")
-
     def lyapunov_parameters(self) -> LyapunovComputationParameters:
+        if self.a == 0.1 and self.b == 0.1 and self.c == 14:
+            return LyapunovComputationParameters(6.0, 0.1, 0.5, 3.5)
         return None # Should be fine as long as no code uses it
 
     def error_bounds(self):
@@ -698,7 +699,7 @@ class AttractorData:
             if last_n == None:
                 lyap, corr =  lyapunov_kantz_and_correlation_dimension(data, dt, min_t_dst, epsilon, tau_begin, tau_end, 2, r_min, r_max, 2)
             else:
-                lyap, corr = lyapunov_kantz_and_correlation_dimension(data[-last_n:,], dt, min_t_dst, tau_begin, tau_end, 2, r_min, r_max, 2)
+                lyap, corr = lyapunov_kantz_and_correlation_dimension(data[-last_n:,], dt, min_t_dst, epsilon, tau_begin, tau_end, 2, r_min, r_max, 2)
             return corr, lyap
         elif lyapunov:
             raise "AttractorData._correlation_lyapunov: Lyapunov measurement is currently disabled"
