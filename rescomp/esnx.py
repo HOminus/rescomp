@@ -510,10 +510,10 @@ class RoesslerConfig(DataConfig):
             "b": self.b,
             "c": self.c
         }
-        if timescale != None:
+        if self.timescale != None:
             dict["timescale"] = self.timescale
 
-        return timescale
+        return dict
 
     def from_dict(dict):
         cc = DataConfig.from_dict()
