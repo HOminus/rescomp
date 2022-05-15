@@ -942,7 +942,7 @@ class AttractorResult:
 
         if self.last_n_prediction_lyapunov != None:
             assert self.last_n_actual_lyapunov != None
-            dict["last_n_prediction_lyapunov"] = self.last_n_actual_lyapunov
+            dict["last_n_prediction_lyapunov"] = self.last_n_prediction_lyapunov
 
         if self.last_n_actual_lyapunov != None:
             assert self.last_n_prediction_lyapunov != None
