@@ -172,7 +172,7 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
         return 0., dimension
     
     taus = np.linspace(tau_begin, tau_end, tau_points)
-    tau_index_offsets = np.array([round(tau/dt) for tau in taus])
+    tau_index_offsets = np.array([int(round(tau/dt)) for tau in taus])
     S_tau = np.zeros(tau_points)
 
     data_point_counts = 0
