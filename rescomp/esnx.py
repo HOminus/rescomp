@@ -163,7 +163,11 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
     minimum_index_distance = math.ceil(minimum_time_distance / dt)
     rs = np.logspace(np.log10(r_min), np.log(r_max), r_points)
 
-    tree = scipy.spatial.KDTree(data)
+    try:
+        tree = scipy.spatial.KDTree(data)
+    except RecursionError:
+        return 0.0, 0.0
+
     N_r = np.array(tree.count_neighbors(tree, rs), dtype=float) / data.shape[0]
     N_r = np.vstack((rs, N_r))
 
