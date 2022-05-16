@@ -9,6 +9,7 @@ import numpy as np
 import scipy
 import pickle
 import os
+import json
 
 from scipy.sparse.linalg.eigen.arpack.arpack \
     import ArpackNoConvergence as _ArpackNoConvergence
@@ -516,7 +517,7 @@ class RoesslerConfig(DataConfig):
         return dict
 
     def from_dict(dict):
-        cc = DataConfig.from_dict()
+        cc = DataConfig.from_dict(dict)
         roessler = RoesslerConfig(cc.scale, cc.position, cc.rotation)
         roessler.starting_point = np.array([dict["starting_point"][0], dict["starting_point"][1], dict["starting_point"][2]])
         roessler.a = dict["a"]
@@ -998,7 +999,7 @@ class AttractorResult:
             ar.last_n_prediction_lyapunov = dict["last_n_prediction_lyapunov"]
 
         if "last_n_actual_lyapunov" in dict:
-            ar.last_n_actual_lyapunoy = dict["last_n_actual_lyapunov"]
+            ar.last_n_actual_lyapunov = dict["last_n_actual_lyapunov"]
 
         return ar
 
@@ -2213,6 +2214,18 @@ class SimulationResult:
             for run in simulation_result.runs:
                 merge.add_run(run)
         return merge
+
+
+    @staticmethod
+    def merge_files(*filepaths):
+        sr_list = []
+        for filepath in filepaths:
+            with open(filepath) as file:
+                sr = SimulationResult.from_dict(json.load(file))
+                sr_list += [sr]
+        
+        sr_list = tuple(sr_list)
+        return SimulationResult.merge(*sr_list)
 
 class AdvancedNetworkAnalyzation:
     def __init__(self, esnx: ESNX, train_state_capture: TrainStateCapture):
