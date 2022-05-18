@@ -200,7 +200,7 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
     if data_point_counts != 0:
         lyapunov = 1. / data_point_counts * (S_tau[-1] - S_tau[0]) / (taus[-1] - taus[0])
     else:
-        lyapunov = None
+        lyapunov = 0.0
     return lyapunov, dimension
 
 
