@@ -161,7 +161,7 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
         raise f"At the moment only 2 is a valid choice for tau_points and r_points. Found: tau: {tau_points} r: {r_points}"
 
     minimum_index_distance = math.ceil(minimum_time_distance / dt)
-    rs = np.logspace(np.log10(r_min), np.log(r_max), r_points)
+    rs = np.logspace(np.log10(r_min), np.log10(r_max), r_points)
 
     try:
         tree = scipy.spatial.KDTree(data)
@@ -201,7 +201,7 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
     if data_point_counts != 0:
         lyapunov = 1. / data_point_counts * (S_tau[-1] - S_tau[0]) / (taus[-1] - taus[0])
     else:
-        lyapunov = None
+        lyapunov = 0.0
     return lyapunov, dimension
 
 
@@ -481,7 +481,7 @@ class RoesslerConfig(DataConfig):
 
     def lyapunov_parameters(self) -> LyapunovComputationParameters:
         if self.a == 0.1 and self.b == 0.1 and self.c == 14:
-            return LyapunovComputationParameters(6.0, 0.1, 0.5, 3.5)
+            return LyapunovComputationParameters(6.0, 0.13, 1.0, 4.0)
         return None # Should be fine as long as no code uses it
 
     def error_bounds(self):
@@ -994,10 +994,10 @@ class AttractorResult:
             ar.last_n_rmse = dict["last_n_rmse"]
         
         if "last_n_prediction_correlation_dimension" in dict:
-            ar.prediction_correlation_dimension = dict["last_n_prediction_correlation_dimension"]
+            ar.last_n_prediction_correlation_dimension = dict["last_n_prediction_correlation_dimension"]
 
         if "last_n_actual_correlation_dimension" in dict:
-            ar.actual_correlation_dimension = dict["last_n_actual_correlation_dimension"]
+            ar.last_n_actual_correlation_dimension = dict["last_n_actual_correlation_dimension"]
 
         if "last_n_prediction_lyapunov" in dict:
             ar.last_n_prediction_lyapunov = dict["last_n_prediction_lyapunov"]
