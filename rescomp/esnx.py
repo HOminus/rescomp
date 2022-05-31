@@ -9,6 +9,7 @@ import numpy as np
 import scipy
 import pickle
 import os
+import json
 
 from scipy.sparse.linalg.eigen.arpack.arpack \
     import ArpackNoConvergence as _ArpackNoConvergence
@@ -160,7 +161,7 @@ def lyapunov_kantz_and_correlation_dimension(data, dt, minimum_time_distance, ep
         raise f"At the moment only 2 is a valid choice for tau_points and r_points. Found: tau: {tau_points} r: {r_points}"
 
     minimum_index_distance = math.ceil(minimum_time_distance / dt)
-    rs = np.logspace(np.log10(r_min), np.log(r_max), r_points)
+    rs = np.logspace(np.log10(r_min), np.log10(r_max), r_points)
 
     try:
         tree = scipy.spatial.KDTree(data)
@@ -480,7 +481,7 @@ class RoesslerConfig(DataConfig):
 
     def lyapunov_parameters(self) -> LyapunovComputationParameters:
         if self.a == 0.1 and self.b == 0.1 and self.c == 14:
-            return LyapunovComputationParameters(6.0, 0.1, 0.5, 3.5)
+            return LyapunovComputationParameters(6.0, 0.13, 1.0, 4.0)
         return None # Should be fine as long as no code uses it
 
     def error_bounds(self):
@@ -520,7 +521,7 @@ class RoesslerConfig(DataConfig):
         return dict
 
     def from_dict(dict):
-        cc = DataConfig.from_dict()
+        cc = DataConfig.from_dict(dict)
         roessler = RoesslerConfig(cc.scale, cc.position, cc.rotation)
         roessler.starting_point = np.array([dict["starting_point"][0], dict["starting_point"][1], dict["starting_point"][2]])
         roessler.a = dict["a"]
@@ -993,16 +994,16 @@ class AttractorResult:
             ar.last_n_rmse = dict["last_n_rmse"]
         
         if "last_n_prediction_correlation_dimension" in dict:
-            ar.prediction_correlation_dimension = dict["last_n_prediction_correlation_dimension"]
+            ar.last_n_prediction_correlation_dimension = dict["last_n_prediction_correlation_dimension"]
 
         if "last_n_actual_correlation_dimension" in dict:
-            ar.actual_correlation_dimension = dict["last_n_actual_correlation_dimension"]
+            ar.last_n_actual_correlation_dimension = dict["last_n_actual_correlation_dimension"]
 
         if "last_n_prediction_lyapunov" in dict:
             ar.last_n_prediction_lyapunov = dict["last_n_prediction_lyapunov"]
 
         if "last_n_actual_lyapunov" in dict:
-            ar.last_n_actual_lyapunoy = dict["last_n_actual_lyapunov"]
+            ar.last_n_actual_lyapunov = dict["last_n_actual_lyapunov"]
 
         return ar
 
@@ -2217,6 +2218,18 @@ class SimulationResult:
             for run in simulation_result.runs:
                 merge.add_run(run)
         return merge
+
+
+    @staticmethod
+    def merge_files(*filepaths):
+        sr_list = []
+        for filepath in filepaths:
+            with open(filepath) as file:
+                sr = SimulationResult.from_dict(json.load(file))
+                sr_list += [sr]
+        
+        sr_list = tuple(sr_list)
+        return SimulationResult.merge(*sr_list)
 
 class AdvancedNetworkAnalyzation:
     def __init__(self, esnx: ESNX, train_state_capture: TrainStateCapture):
