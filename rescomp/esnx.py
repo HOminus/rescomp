@@ -243,6 +243,15 @@ def _make_sparse_w_in(esn, w_in_scale, p_w_in_dense, simple: bool):
                     low= -esn._w_in_scale,
                     high= esn._w_in_scale)
 
+def override_w_in_with_fixed_w_in(esn: esn.ESN):
+    scale = esn._w_in_scale
+    new_w_in = np.zeros((esn._n_dim, esn._x_dim))
+    rnd = np.random.default_rng(12345678)
+    for i in range(esn._n_dim):
+        rand_x_coord = rnd.choice(np.arange(esn._x_dim))
+        new_w_in[i, rand_x_coord] = rnd.uniform(low=-scale, high=scale)
+    esn._w_in = new_w_in
+
 def _project_to_3d(vec1, vec2, vec3):
     v1 = np.linalg.norm(vec1)
     v2 = np.linalg.norm(vec2)
