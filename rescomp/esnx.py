@@ -1888,6 +1888,11 @@ class StoreMatrixResult:
             smv = pickle.load(file, encoding='bytes')
         return smv.w_in, smv.m, smv.w_out, smv.tsc
 
+    def load_from_dir(self, dir: str):
+        with open(f"{dir}/{self.filepath}", 'rb') as file:
+            smv = pickle.load(file, encoding='bytes')
+        return smv.w_in, smv.m, smv.w_out, smv.tsc
+
     @staticmethod
     def unique_filename():
         name = f"{StoreMatrixResult.unique_id}.dump"
