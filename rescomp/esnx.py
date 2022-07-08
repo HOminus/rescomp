@@ -801,7 +801,7 @@ class ESNX:
         self.esn._r_train = self.esn.synchronize(self.esn._x_train[:-1], save_r = True)
         self.esn._r_train_gen = self.esn._r_to_generalized_r(self.esn._r_train)
 
-    def train(self, capture_train_states: bool =  False) -> TrainStateCapture:
+    def train(self, capture_train_states: bool =  False, compute_train_error = False) -> (TrainStateCapture, float):
         assert self.attractor_config != None
         assert self.esn._x_dim == self.attractor_config.attractors[0].train.shape[1]
         assert self.esn._w_out_fit_flag != None
@@ -845,7 +845,12 @@ class ESNX:
         #w_out = (y_combined @ r_combined) @ np.linalg.inv(r_combined.T @ r_combined + self.esn._reg_param * np.identity(r_combined.shape[1]))
 
         self.esn._w_out = w_out
-        return tsc
+
+        if compute_train_error:
+            train_error = np.linalg.norm(self.esn._w_out @ r_combined - y_combined.T, axis = 0) + self.esn._reg_param * np.linalg.norm(self.esn._w_out)
+            return tsc, np.sum(train_error)
+        else:
+            return tsc, None
 
     def predict(self):
         for attractor in self.attractor_config.attractors:
@@ -1917,6 +1922,24 @@ class StoreMatrixResult:
     def from_dict(dict):
         return StoreMatrixResult(dict["filepath"])
 
+class TrainErrorResult:
+    def __init__(self, train_error: float):
+        self.train_error = train_error
+
+    def as_dict(self):
+        dict = {
+            "type": "TrainErrorResult"
+        }
+
+        dict["train_error"] = self.train_error
+
+        return dict
+
+    @staticmethod
+    def from_dict(dict):
+        train_error = dict["train_error"]
+        return TrainErrorResult(train_error)
+
 
 class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
@@ -2139,6 +2162,8 @@ class Run:
                         measurements += [CircleRoundnessResult.from_dict(x)]
                     elif x["type"] == "StoreMatrixResult":
                         measurements += [StoreMatrixResult.from_dict(x)]
+                    elif x["type"] == "TrainErrorResult":
+                        measurements += [TrainErrorResult.from_dict(x)]
                     else:
                         raise ValueError(f"Failed to deserialize type: {m['type']}")
                 run.add_esnx_measurements(*tuple(measurements))
