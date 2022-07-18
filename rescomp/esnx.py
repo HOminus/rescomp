@@ -1262,18 +1262,22 @@ class InubushiResult2:
         self.inubushi_total_memcap = None
         self.inubushi_memcap = None
         self.inubushi_mem_stddev = None
+        self.random_seed = None
 
-    def measure(self, esnx: ESNX):
+    def measure(self, esnx: ESNX, seed: int = None):
         result = np.zeros((self.forward_steps, 0))
+        
+        self.random_seed = seed
+        rnd = np.random.defaukt_rng(seed)
 
         for _ in range(self.measurement_count):
             attractor_config = esnx.attractor_config[self.attractor_id].config
 
             randomized_start_offset = None
             if type(attractor_config) == CircleConfig:
-                randomized_start_offset = 2 * math.pi * np.random.rand()
+                randomized_start_offset = 2 * math.pi * rnd.rand()
             else:
-                randomized_start_offset = np.random.rand((3))
+                randomized_start_offset = rnd.rand((3))
 
             total_time_steps = self.discard_steps + self.sync_steps + self.forward_steps
             data, _, _, _ = attractor_config.generate_data(self.discard_steps, total_time_steps, randomized_start_offset)
@@ -1334,6 +1338,9 @@ class InubushiResult2:
             "inubushi_memcap": base64.b85encode(self.inubushi_memcap.astype('float32').tobytes()).decode('ASCII')
         }
 
+        if self.random_seed != None:
+            dict["random_seed"] = self.random_seed
+
         if save_stddev:
             dict["inubushi_mem_stddev"] = base64.b85encode(self.inubushi_mem_stddev.astype('float32').tobytes()).decode('ASCII')
         
@@ -1352,6 +1359,9 @@ class InubushiResult2:
 
         ir.inubushi_total_memcap = dict["inubushi_total_memcap"]
         ir.inubushi_memcap = np.frombuffer(base64.b85decode(dict["inubushi_memcap"]), dtype='float32')
+
+        if "random_seed" in dict:
+            ir.random_seed = dict["random_seed"]
 
         if "inubushi_mem_stddev" in dict:
             ir.inubushi_mem_stddev = np.frombuffer(base64.b85decode(dict["inubushi_mem_stddev"]), dtype='float32')
