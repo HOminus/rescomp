@@ -1268,16 +1268,16 @@ class InubushiResult2:
         result = np.zeros((self.forward_steps, 0))
         
         self.random_seed = seed
-        rnd = np.random.defaukt_rng(seed)
+        rnd = np.random.default_rng(seed)
 
         for _ in range(self.measurement_count):
             attractor_config = esnx.attractor_config[self.attractor_id].config
 
             randomized_start_offset = None
             if type(attractor_config) == CircleConfig:
-                randomized_start_offset = 2 * math.pi * rnd.rand()
+                randomized_start_offset = 2 * math.pi * rnd.random()
             else:
-                randomized_start_offset = rnd.rand((3))
+                randomized_start_offset = rnd.random((3))
 
             total_time_steps = self.discard_steps + self.sync_steps + self.forward_steps
             data, _, _, _ = attractor_config.generate_data(self.discard_steps, total_time_steps, randomized_start_offset)
