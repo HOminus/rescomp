@@ -11,6 +11,8 @@ import pickle
 import os
 import json
 
+from sklearn import decomposition
+
 from scipy.sparse.linalg.eigen.arpack.arpack \
     import ArpackNoConvergence as _ArpackNoConvergence
 
@@ -83,19 +85,19 @@ def spr(data, err, dim_params, lyap_params, scale, pos, rot):
         data = data - mean
     if type(rot) is np.ndarray and rot[0] != 0:
         rx = rot[0]
-        m = np.array([[1., 0. , 0.], [0.0, cos(rx), -sin(rx)], [0.0, sin(rx), cos(rx)]])
+        m = np.array([[1., 0. , 0.], [0.0, np.cos(rx), -np.sin(rx)], [0.0, np.sin(rx), np.cos(rx)]])
         data[:] = data.dot(m.T)
         if type(err) is np.ndarray:
             err[:] = np.abs(err.dot(m.T))
     if type(rot) is np.ndarray and rot[1] != 0:
         ry = rot[1]
-        m = np.array([[cos(ry), 0., -sin(ry)], [0., 1., 0.], [sin(ry), 0., cos(ry)]])
+        m = np.array([[np.cos(ry), 0., -np.sin(ry)], [0., 1., 0.], [np.sin(ry), 0., np.cos(ry)]])
         data[:] = data.dot(m.T)
         if type(err) is np.ndarray:
             err[:] = np.abs(err.dot(m.T))
     if type(rot) is np.ndarray and rot[2] != 0:
         rz = rot[2]
-        m = np.array([[cos(rz), -sin(rz), 0.], [sin(rz), cos(rz), 0.], [0., 0., 1.]])
+        m = np.array([[np.cos(rz), -np.sin(rz), 0.], [np.sin(rz), cos(rz), 0.], [0., 0., 1.]])
         data[:] = data.dot(m.T)
         if type(err) is np.ndarray:
             err[:] = np.abs(err.dot(m.T))
@@ -745,12 +747,15 @@ class AttractorData:
         if last_n == None:
             last_n = 0
         if x_dim == 3:
-            ax = plt.axes(projection="3d")
+            if plt.get_fignums() == []:
+                ax = plt.axes(projection="3d")
+            else:
+                ax = plt.gca()
             ax.plot(self.true_prediction[-last_n:,0], self.true_prediction[-last_n:,1], self.true_prediction[-last_n:,2], label="Data")
-            ax.plot(self.esn_prediction[-last_n:,0], self.esn_prediction[-last_n:,1], self.esn_prediction[-last_n:,2], label="ESN Prediction")
+            ax.plot(self.esn_prediction[-last_n:,0], self.esn_prediction[-last_n:,1], self.esn_prediction[-last_n:,2], label="ESN Prediction", linestyle="dashed")
         elif x_dim == 2:
             plt.plot(self.true_prediction[-last_n:, 0], self.true_prediction[-last_n:, 1], label="Data")
-            plt.plot(self.esn_prediction[-last_n:, 0], self.esn_prediction[-last_n:, 1], label="ESN Prediction")
+            plt.plot(self.esn_prediction[-last_n:, 0], self.esn_prediction[-last_n:, 1], label="ESN Prediction", linestyle="dashed")
         else:
             raise ValueError(f"AttractorData.plot_prediction: Dimension {x_dim} not supported.")
 
@@ -789,6 +794,7 @@ class ESNX:
         self.esn = esn.ESN()
         self.input_strength = None #Used by MemcapResult
         self.alpha_blend = None
+        self.pca_components = None
 
     def _train_without_fit(self, train_data, train_sync_steps):
         if train_sync_steps != 0:
@@ -814,13 +820,17 @@ class ESNX:
         y = []
         for attractor in self.attractor_config.attractors:
             self._train_without_fit(attractor.train, self.attractor_config.train_sync_steps)
-            r.append(self.esn._r_train_gen)
+            if self.pca_components != None:
+                r.append(self.esn._r_train)
+            else:
+                r.append(self.esn._r_train_gen)
             y.append(self.esn._x_train[1:])
             if capture_train_states:
                 tsc.capture(self)
         
         if self.alpha_blend != None:
             assert len(r) == 2
+            assert self.pca_components == None #blend and pca currently not supported
 
             blended_r_combined = np.vstack((self.alpha_blend * r[0], (1 - self.alpha_blend) * r[1]))
             blended_y_combined = np.vstack((self.alpha_blend * y[0], (1 - self.alpha_blend) * y[1]))
@@ -834,7 +844,22 @@ class ESNX:
                 y_combined[i,:] = blended_y_combined[s,:]
             r_combined = r_combined.T
         else:
-            r_combined = np.vstack(tuple(r)).T
+            if self.pca_components != None:
+                r_combined = np.vstack(tuple(r))
+                self.esn._input_data_mean = np.mean(r_combined, axis=0)
+                pca = decomposition.PCA(n_components=self.pca_components)
+                pca.fit(r_combined)
+                self.esn._pca_matrix = pca.components_
+                
+                new_r_combined = None
+                for index, row in enumerate(r_combined):
+                    new_row = self.esn._r_to_generalized_r(row)
+                    if type(new_r_combined) is not np.ndarray:
+                        new_r_combined = np.zeros((r_combined.shape[0], new_row.shape[0]))
+                    new_r_combined[index,:] = new_row
+                r_combined = new_r_combined.T
+            else:
+                r_combined = np.vstack(tuple(r)).T
             y_combined = np.vstack(tuple(y))
 
         w_out = np.linalg.solve(r_combined @ r_combined.T + self.esn._reg_param * np.identity(r_combined.shape[0]),
@@ -1895,6 +1920,14 @@ class StoreMatrixResult:
             self.w_out = w_out
             self.tsc = tsc
 
+    class StoreMatrixValue2:
+        def __init__(self, w_in, m, w_out, pca_matrix, tsc: TrainStateCapture):
+            self.w_in = w_in
+            self.m = m
+            self.w_out = w_out
+            self.pca = pca_matrix
+            self.tsc = tsc
+
     def __init__(self, path: str):
         self.filepath = path
 
@@ -1908,6 +1941,11 @@ class StoreMatrixResult:
             smv = pickle.load(file, encoding='bytes')
         return smv.w_in, smv.m, smv.w_out, smv.tsc
 
+    def load2_from_dir(self, dir: str):
+        with open(f"{dir}/{self.filepath}", 'rb') as file:
+            smv = pickle.load(file, encoding='bytes')
+        return smv.w_in, smv.m, smv.w_out, smv.pca, smv.tsc
+
     @staticmethod
     def unique_filename():
         name = f"{StoreMatrixResult.unique_id}.dump"
@@ -1918,6 +1956,14 @@ class StoreMatrixResult:
     def measure(esnx: ESNX, tsc: TrainStateCapture,  filepath: str, fileprefix: str):
         total_path = f"{filepath}/{fileprefix}_{StoreMatrixResult.unique_filename()}"
         smv = StoreMatrixResult.StoreMatrixValue(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out, tsc)
+        with open(total_path, 'wb') as file:
+            pickle.dump(smv, file)
+        return StoreMatrixResult(total_path)
+
+    @staticmethod
+    def measure2(esnx: ESNX, tsc: TrainStateCapture,  filepath: str, fileprefix: str):
+        total_path = f"{filepath}/{fileprefix}_{StoreMatrixResult.unique_filename()}"
+        smv = StoreMatrixResult.StoreMatrixValue2(esnx.esn._w_in, esnx.esn._network, esnx.esn._w_out, esnx.esn._pca_matrix, tsc)
         with open(total_path, 'wb') as file:
             pickle.dump(smv, file)
         return StoreMatrixResult(total_path)
@@ -1954,13 +2000,15 @@ class TrainErrorResult:
 class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
                 rewire_probability: float = None, activation_function: str = None, leaky_alpha: float = None, w_in_sparse: float = None,
-                simplified_network: bool = False, andrews_matrix_creation: bool = False, continuous_gamma: float = None, alpha_blend: float = None):
+                simplified_network: bool = False, andrews_matrix_creation: bool = False, continuous_gamma: float = None, alpha_blend: float = None,
+                pca_components: int = None):
         self.size = size
         self.spectral_radius = spectral_radius
         self.average_degree = average_degree
         self.regression = regression
         self.input_strength = input_strength
         self.readout = readout
+        self.pca_components = pca_components
 
         self.topology = topology
         self.rewire_probability = rewire_probability
@@ -1988,6 +2036,7 @@ class Run:
     def get_esnx(self, attractor_config: AttractorConfig) -> ESNX:
         esnx = ESNX(attractor_config)
         esnx.input_strength = self.input_strength
+        esnx.pca_components = self.pca_components
 
         if self.topology == "random" and self.andrews_matrix_creation:
             density = self.average_degree / self.size
@@ -2100,6 +2149,9 @@ class Run:
         if self.alpha_blend != None:
             dict["alpha_blend"] = self.alpha_blend
 
+        if self.pca_components != None:
+            dict["pca_components"] = self.pca_components
+
         if len(self.measurements) > 0:
             dict["measurements"] = [[x.as_dict() for x in m] for m in self.measurements]
 
@@ -2137,6 +2189,9 @@ class Run:
 
         if "alpha_blend" in dict:
             run.alpha_blend = dict["alpha_blend"]
+
+        if "pca_components" in dict:
+            run.pca_components = dict["pca_components"]
 
         run.simplified_network = ("simplified_network" in dict)
         run.andrews_matrix_creation = ("andrews_matrix_creation" in dict)
@@ -2287,7 +2342,10 @@ class AdvancedNetworkAnalyzation:
         self.train_steps = train_state_capture.x_captures[0].shape[0]
         self.degree_vector = self._get_in_degrees(esnx.esn)
         self.w_in = copy.deepcopy(esnx.esn._w_in)
-        self.w_out = np.hstack((esnx.esn._w_out.T[:self.n_dim,], esnx.esn._w_out.T[self.n_dim:,]))
+        if esnx.pca_components == None:
+            self.w_out = np.hstack((esnx.esn._w_out.T[:self.n_dim,], esnx.esn._w_out.T[self.n_dim:,]))
+        else:
+            self.w_out = np.hstack((esnx.esn._w_out.T[:esnx.pca_components,], esnx.esn._w_out.T[esnx.pca_components:,]))
         self.train_state_capture = train_state_capture
         
         self.is_permutated_by_degree = False

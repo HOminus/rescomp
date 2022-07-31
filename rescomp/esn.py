@@ -39,6 +39,8 @@ class _ESNCore(utilities._ESNLogging):
 
         self._alpha = None
 
+        self._pca_matrix = None
+        self._input_data_mean = None
         self._gamma = None
         self._timescale = None
 
@@ -106,6 +108,9 @@ class _ESNCore(utilities._ESNLogging):
 
         """
         # This needs to work for
+        if type(self._pca_matrix) == np.ndarray:
+            r = self._pca_matrix @ (r - self._input_data_mean)
+
         if self._w_out_fit_flag is 0:
             return r
         elif self._w_out_fit_flag is 1:
