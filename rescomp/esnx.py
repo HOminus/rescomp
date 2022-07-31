@@ -274,19 +274,30 @@ def _project_to_3d(vec1, vec2, vec3):
     return a, b, c, v1, v2, v3
 
 def _create_orthogonal_matrix(n_dim, epsilon):
-        deviations = np.random.rand(n_dim, n_dim)
+    deviations = np.random.rand(n_dim, n_dim)
 
-        # Modified Gram-Schmidt to make deviations orthonormal
-        for i in range(deviations.shape[0]):
-            deviations[:, i] = deviations[:, i] / np.linalg.norm(deviations[:, i])
-            for k in range(i+ 1, deviations.shape[1]):
-                deviations[:,k] = deviations[:, k] - np.dot(deviations[:, k], deviations[:, i]) * deviations[:, i]
-        
-        # Rescale to length epsilon
-        for col_index in range(deviations.shape[1]):
-            deviations[:,col_index] = epsilon * deviations[:,col_index]
-        
-        return deviations
+    # Modified Gram-Schmidt to make deviations orthonormal
+    for i in range(deviations.shape[0]):
+        deviations[:, i] = deviations[:, i] / np.linalg.norm(deviations[:, i])
+        for k in range(i+ 1, deviations.shape[1]):
+            deviations[:,k] = deviations[:, k] - np.dot(deviations[:, k], deviations[:, i]) * deviations[:, i]
+    
+    # Rescale to length epsilon
+    for col_index in range(deviations.shape[1]):
+        deviations[:,col_index] = epsilon * deviations[:,col_index]
+    
+    return deviations
+
+def _create_orthogonal_matrix2(n_dim, epsilon):
+    rand_matrix = np.random.rand(n_dim, n_dim)
+
+    q, _ = scipy.linalg.qr(rand_matrix, overwrite_a=True)
+
+    for col_index in range(q.shape[1]):
+        column = q[:, col_index]
+        column = column / np.linalg.norm(column)
+        q[:, col_index] = epsilon * column
+    return q
 
 def _create_random_network(N: int, d: float, rho: float):
     for _ in range(10):
@@ -1324,7 +1335,7 @@ class InubushiResult2:
         sync = data[:self.sync_steps]
         esnx.esn.synchronize(sync)
         data = data[self.sync_steps:]
-        deviations = _create_orthogonal_matrix(esnx.esn._n_dim, self.epsilon)
+        deviations = _create_orthogonal_matrix2(esnx.esn._n_dim, self.epsilon)
 
         current_s = data[0]
         current_r = esnx.esn._last_r
