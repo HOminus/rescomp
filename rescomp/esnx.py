@@ -668,6 +668,36 @@ class CircleConfig(DataConfig):
         circle.s = dict["s"]
         return circle
 
+class ConstantConfig(DataConfig):
+    def __init__(self, pos = None):
+        super().__init__(None, pos, None)
+        self.starting_point = pos
+
+    def error_bounds(self):
+        return np.zeros(self.position.shape)
+
+    def dimension_parameters(self):
+        return CorrelationDimensionComputationParameters(0., 0.)
+
+    def lyapunov_parameters(self) -> LyapunovComputationParameters:
+        return LyapunovComputationParameters(0., 0., 0., 0.)
+
+    def generate_data(self, discard_steps: int, total_time_steps: int, starting_point_offset = None):
+        #assert starting_point_offset == self.position
+
+        data = np.zeros((total_time_steps - discard_steps, self.position.shape[0]))
+        for row in range(total_time_steps - discard_steps):
+            data[row, :] = self.position
+
+        return data, self.error_bounds(), self.dimension_parameters(), self.lyapunov_parameters()
+
+    def as_dict(self):
+        raise NotImplementedError()
+
+    @staticmethod
+    def from_dict(dict):
+        raise NotImplementedError()
+
 
 class AttractorData:
     def __init__(self, config):
@@ -883,7 +913,7 @@ class ESNX:
         self.esn._w_out = w_out
 
         if compute_train_error:
-            train_error = np.linalg.norm(self.esn._w_out @ r_combined - y_combined.T, axis = 0) + self.esn._reg_param * np.linalg.norm(self.esn._w_out)
+            train_error = np.linalg.norm(self.esn._w_out @ r_combined - y_combined.T, axis = 0)
             return tsc, np.sum(train_error)
         else:
             return tsc, None
@@ -1300,7 +1330,7 @@ class InubushiResult2:
         self.inubushi_mem_stddev = None
         self.random_seed = None
 
-    def measure(self, esnx: ESNX, seed: int = None):
+    def measure(self, esnx: ESNX, seed: int = None, deviations = None):
         result = np.zeros((self.forward_steps, 0))
         
         self.random_seed = seed
@@ -1321,7 +1351,7 @@ class InubushiResult2:
             if esnx.esn._act_fct_flag == esnx.esn._act_fct_flag_synonyms.get_flag("tanh_simple"):
                 raise NotImplementedError("InubushiResult2.measure: Not yet implemented for 'tanh_simple' activation function.")
             elif esnx.esn._act_fct_flag == esnx.esn._act_fct_flag_synonyms.get_flag("leaky_integrator"):
-                current_result = self._measure_with_leaky_integrator(esnx, data)
+                current_result = self._measure_with_leaky_integrator(esnx, data, deviations)
             else:
                 raise ValueError(f"InubushiResult.measure: Activation function {esnx.esn._act_fct_flag} not supported")
 
@@ -1331,20 +1361,23 @@ class InubushiResult2:
         self.inubushi_total_memcap = np.sum(self.inubushi_memcap)
         self.inubushi_mem_stddev = np.std(result, axis = 1).T
 
-    def _measure_with_leaky_integrator(self, esnx: ESNX, data):
+    def _measure_with_leaky_integrator(self, esnx: ESNX, data, deviation_param = None):
         sync = data[:self.sync_steps]
         esnx.esn.synchronize(sync)
         data = data[self.sync_steps:]
-        deviations = _create_orthogonal_matrix2(esnx.esn._n_dim, self.epsilon)
+        if type(deviation_param) == type(None):
+            deviations = _create_orthogonal_matrix2(esnx.esn._n_dim, self.epsilon)
+        else:
+            deviations = deviation_param
 
         current_s = data[0]
         current_r = esnx.esn._last_r
 
         save_shape = current_r.shape
-        deviated_r = deviations + current_r.reshape((esnx.esn._n_dim, 1))
+        deviated_r = deviations + current_r.reshape((deviations.shape[0], 1))
         current_r.reshape(save_shape)
 
-        result = np.zeros((self.forward_steps, esnx.esn._n_dim))
+        result = np.zeros((self.forward_steps, deviations.shape[1]))
         
         for k in range(result.shape[1]):
             result[0, k] = np.linalg.norm(deviated_r[:,k] - current_r)
