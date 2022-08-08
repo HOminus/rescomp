@@ -1165,6 +1165,25 @@ class MemcapResult:
 
         return mr
 
+class SpectralRadiusValueResult:
+    def __init__(value: float):
+        self.value = value
+
+    @staticmethod
+    def measure(esnx: ESNX):
+        value = scipy.sparse.linalg.eigs(esnx.esn._network, k=1, which='LM', return_eigenvectors = False)
+        return SpectralRadiusValueResult(value)
+
+    def as_dict(self):
+        return {
+            "type": "SpectralRadiusValueResult",
+            "value": self.value
+        }
+
+    @staticmethod
+    def from_dict(dict):
+        return SpectralRadiusValueResult(dict["value"])
+
 class InubushiResult:
     def __init__(self, attractor_id: int, discard_steps: int, sync_steps: int, forward_steps: int, measurement_count: int, epsilon: float):
         self.attractor_id: int = attractor_id
@@ -2273,6 +2292,8 @@ class Run:
                         measurements += [StoreMatrixResult.from_dict(x)]
                     elif x["type"] == "TrainErrorResult":
                         measurements += [TrainErrorResult.from_dict(x)]
+                    elif x["type"] == "SpectralRadiusValueResult":
+                        measurements += [SpectralRadiusValueResult.from_dict(x)]
                     else:
                         raise ValueError(f"Failed to deserialize type: {m['type']}")
                 run.add_esnx_measurements(*tuple(measurements))
