@@ -1174,7 +1174,11 @@ class SpectralRadiusValueResult:
 
     @staticmethod
     def measure(esnx: ESNX):
-        value = scipy.sparse.linalg.eigs(esnx.esn._network, k=1, which='LM', return_eigenvectors = False)
+        try:
+            value = scipy.sparse.linalg.eigs(esnx.esn._network, k=1, which='LM', return_eigenvectors = False)
+        except _ArpackNoConvergence:
+            print("SpectralRadiusValueResult: Convergence failed")
+            value = None
         return SpectralRadiusValueResult(value)
 
     def as_dict(self):
