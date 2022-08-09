@@ -692,11 +692,14 @@ class ConstantConfig(DataConfig):
         return data, self.error_bounds(), self.dimension_parameters(), self.lyapunov_parameters()
 
     def as_dict(self):
-        raise NotImplementedError()
+        return super().as_dict()
 
     @staticmethod
     def from_dict(dict):
-        raise NotImplementedError()
+        cc = DataConfig.from_dict(dict)
+        constant = ConstantConfig(cc.position)
+        constant.starting_point = dict["starting_point"]
+        return constant
 
 
 class AttractorData:
@@ -1166,7 +1169,7 @@ class MemcapResult:
         return mr
 
 class SpectralRadiusValueResult:
-    def __init__(value: float):
+    def __init__(self, value: complex):
         self.value = value
 
     @staticmethod
@@ -1177,12 +1180,12 @@ class SpectralRadiusValueResult:
     def as_dict(self):
         return {
             "type": "SpectralRadiusValueResult",
-            "value": self.value
+            "value": str(self.value)
         }
 
     @staticmethod
     def from_dict(dict):
-        return SpectralRadiusValueResult(dict["value"])
+        return SpectralRadiusValueResult(complex(dict["value"]))
 
 class InubushiResult:
     def __init__(self, attractor_id: int, discard_steps: int, sync_steps: int, forward_steps: int, measurement_count: int, epsilon: float):
@@ -2364,6 +2367,9 @@ class SimulationResult:
                 elif attractor_specification["type"] == "CircleConfig":
                     circle = CircleConfig.from_dict(attractor_specification)
                     attractor_data += [AttractorData(circle)]
+                elif attractor_specification["type"] == "ConstantConfig":
+                    constant = ConstantConfig.from_dict(attractor_specification)
+                    attractor_data += [AttractorData(constant)]
                 else:
                     raise ValueError(f"Failed to find valid attractor configuration")
             sr.attractor_config.attractors = attractor_data
