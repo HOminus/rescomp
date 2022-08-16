@@ -1504,38 +1504,28 @@ class InubushiResult3:
         return result
 
 class TrainStateSpaceResult:
-    def __init__(self, minimum_distance, maximum_distance, stride_element: int):
+    def __init__(self, minimum_distance, maximum_distance, stride_element: int = None):
         self.stride_element = stride_element
         self.minimum_distance = minimum_distance
         self.maximum_distance = maximum_distance
 
     @staticmethod
-    def measure(tsc: TrainStateCapture):
+    def measure(tsc: TrainStateCapture, stride_elements: int = None):
         assert len(tsc.r_captures) == 2
 
-        r1 = tsc.r_captures[0]
-        r2 = tsc.r_captures[1]
+        if stride_elements == None:
+            r1 = tsc.r_captures[0]
+            r2 = tsc.r_captures[1]
+        else:
+            r1 = tsc.r_captures[0][::stride_element,:]
+            r2 = tsc.r_captures[1][::stride_element,:]
 
         distance_matrix = scipy.spatial.distance.cdist(r1, r2).flatten()
 
         min_distance = np.min(distance_matrix)
         max_distance = np.max(distance_matrix)
 
-        return TrainStateSpaceResult(min_distance, max_distance)  
-
-    @staticmethod
-    def measure_sample(tsc: TrainStateCapture, stride_element: int):
-        assert len(tsc.r_captures) == 2
-
-        r1 = tsc.r_captures[0][::stride_element,:]
-        r2 = tsc.r_captures[1][::stride_element,:]
-
-        distance_matrix = scipy.spatial.distance.cdist(r1, r2).flatten()
-
-        min_distance = np.min(distance_matrix)
-        max_distance = np.max(distance_matrix)
-
-        return TrainStateSpaceResult(min_distance, max_distance)
+        return TrainStateSpaceResult(min_distance, max_distance, stride_elements)
 
     def as_dict(self):
         d =  {
