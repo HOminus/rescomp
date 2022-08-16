@@ -5,7 +5,7 @@ from . import simulations, utilities, measures, esn, esnx, locality_measures
 from .esn import ESN, ESNWrapper, ESNGenLoc
 from .esnx import DataConfig, LorenzConfig, HalvorsenConfig, RoesslerConfig, GuanConfig, CircleConfig, ConstantConfig, AttractorConfig, ESNX, \
     AttractorResult, MemcapResult, InubushiResult, InubushiResult2, InubushiResult3, TrainStateSpaceResult, SvdResult, VolumeResult, CircleResult, \
-    FlouqetAnalysisResult, Run, SimulationResult, StoreMatrixResult, TrainErrorResult, CircleResult2, AdvancedNetworkAnalyzation, \
+    FlouqetAnalysisResult, Run, SimulationResult, StoreMatrixResult, TrainErrorResult, GeneralizedTrainErrorResult, CircleResult2, AdvancedNetworkAnalyzation, \
     SpectralRadiusValueResult
 from .utilities import read_pickle
 from .simulations import simulate_trajectory

@@ -830,7 +830,7 @@ class TrainStateCapture:
 
     def capture(self, esnx):
         self.r_captures += [esnx.esn._r_train]
-        self.x_captures += [esnx.esn._x_train[:-1]]
+        self.x_captures += [esnx.esn._x_train]
 
 class ESNX:
     def __init__(self, attractor_config: AttractorConfig):
@@ -851,7 +851,7 @@ class ESNX:
         self.esn._r_train = self.esn.synchronize(self.esn._x_train[:-1], save_r = True)
         self.esn._r_train_gen = self.esn._r_to_generalized_r(self.esn._r_train)
 
-    def train(self, capture_train_states: bool =  False, compute_train_error = False) -> (TrainStateCapture, float):
+    def train(self, capture_train_states: bool =  False) -> TrainStateCapture:
         assert self.attractor_config != None
         assert self.esn._x_dim == self.attractor_config.attractors[0].train.shape[1]
         assert self.esn._w_out_fit_flag != None
@@ -895,13 +895,7 @@ class ESNX:
                 pca.fit(r_combined)
                 self.esn._pca_matrix = pca.components_
                 
-                new_r_combined = None
-                for index, row in enumerate(r_combined):
-                    new_row = self.esn._r_to_generalized_r(row)
-                    if type(new_r_combined) is not np.ndarray:
-                        new_r_combined = np.zeros((r_combined.shape[0], new_row.shape[0]))
-                    new_r_combined[index,:] = new_row
-                r_combined = new_r_combined.T
+                r_combined = self.esn._r_to_generalized_r(r_combined).T
             else:
                 r_combined = np.vstack(tuple(r)).T
             y_combined = np.vstack(tuple(y))
@@ -914,12 +908,7 @@ class ESNX:
         #w_out = (y_combined @ r_combined) @ np.linalg.inv(r_combined.T @ r_combined + self.esn._reg_param * np.identity(r_combined.shape[1]))
 
         self.esn._w_out = w_out
-
-        if compute_train_error:
-            train_error = np.linalg.norm(self.esn._w_out @ r_combined - y_combined.T, axis = 0)
-            return tsc, np.sum(train_error)
-        else:
-            return tsc, None
+        return tsc
 
     def predict(self):
         for attractor in self.attractor_config.attractors:
@@ -933,7 +922,6 @@ class ESNX:
 
     def dump_win(self):
         print("Shape: ", self.esn._w_in.shape, "\n", self.esn._w_in)
-
 
 class AttractorResult:
     def __init__(self, attractor_id: int, last_n_rmse_size: int, last_n_correlation_lyapunov_size: int):
@@ -1184,12 +1172,16 @@ class SpectralRadiusValueResult:
     def as_dict(self):
         return {
             "type": "SpectralRadiusValueResult",
-            "value": str(self.value)
+            "value": str(self.value) if self.value != None else None
         }
 
     @staticmethod
     def from_dict(dict):
-        return SpectralRadiusValueResult(complex(dict["value"]))
+        val = dict["value"]
+        if val == "None" or val is None:
+            return SpectralRadiusValueResult(None)
+        else:
+            return SpectralRadiusValueResult(complex(val))
 
 class InubushiResult:
     def __init__(self, attractor_id: int, discard_steps: int, sync_steps: int, forward_steps: int, measurement_count: int, epsilon: float):
@@ -1512,7 +1504,8 @@ class InubushiResult3:
         return result
 
 class TrainStateSpaceResult:
-    def __init__(self, minimum_distance, maximum_distance):
+    def __init__(self, minimum_distance, maximum_distance, stride_element: int):
+        self.stride_element = stride_element
         self.minimum_distance = minimum_distance
         self.maximum_distance = maximum_distance
 
@@ -1528,18 +1521,38 @@ class TrainStateSpaceResult:
         min_distance = np.min(distance_matrix)
         max_distance = np.max(distance_matrix)
 
-        return TrainStateSpaceResult(min_distance, max_distance)   
+        return TrainStateSpaceResult(min_distance, max_distance)  
+
+    @staticmethod
+    def measure_sample(tsc: TrainStateCapture, stride_element: int):
+        assert len(tsc.r_captures) == 2
+
+        r1 = tsc.r_captures[0][::stride_element,:]
+        r2 = tsc.r_captures[1][::stride_element,:]
+
+        distance_matrix = scipy.spatial.distance.cdist(r1, r2).flatten()
+
+        min_distance = np.min(distance_matrix)
+        max_distance = np.max(distance_matrix)
+
+        return TrainStateSpaceResult(min_distance, max_distance)
 
     def as_dict(self):
-        return {
+        d =  {
             "type": "TrainStateSpaceResult",
             "minimum_distance": self.minimum_distance,
             "maximum_distance": self.maximum_distance,
         }
+        if self.stride_element != None:
+            d["stride_element"] = self.stride_element
+        return d
 
     @staticmethod
     def from_dict(dict):
-        return TrainStateSpaceResult(dict["minimum_distance"], dict["maximum_distance"])
+        if "stride_element" in dict:
+            return TrainStateSpaceResult(dict["minimum_distance"], dict["maximum_distance"], dict["stride_element"])
+        else:
+            return TrainStateSpaceResult(dict["minimum_distance"], dict["maximum_distance"])
 
 class SvdResult:
     def __init__(self, low_rank_approx_error = None, singular_values: [float] = None):
@@ -2066,6 +2079,46 @@ class TrainErrorResult:
         train_error = dict["train_error"]
         return TrainErrorResult(train_error)
 
+class GeneralizedTrainErrorResult:
+    def __init__(self, train_error: float, computational_capacity: float):
+        self.train_error = train_error
+        self.computational_capacity = computational_capacity
+
+    def measure(tsc: TrainStateCapture, esnx: ESNX, cc: bool):
+        w_out = esnx.esn._w_out
+
+        r_combined = np.vstack(tuple(tsc.r_captures))
+        r_combined = esnx.esn._r_to_generalized_r(r_combined).T
+
+        y_combined = np.vstack(tuple([x[1:,] for x in tsc.x_captures])).T
+
+        fit_error = np.linalg.norm(w_out @ r_combined - y_combined, axis = 0)
+        train_error = np.sum(fit_error)
+
+        computational_capacity = None
+        if cc:
+            normalization = np.linalg.norm(y_combined, axis = 0) ** 2
+            squared_fit_error = fit_error ** 2
+            computational_capacity = 1 - np.sum(squared_fit_error / normalization)
+        
+        return GeneralizedTrainErrorResult(train_error, computational_capacity)
+
+    def as_dict(self):
+        d = {
+            "type": "GeneralizedTrainErrorResult",
+            "train_error": self.train_error
+        }
+        if self.computational_capacity != None:
+            d["computational_capacity"] = self.computational_capacity
+        return d
+
+    @staticmethod
+    def from_dict(dict):
+        if "computational_capacity" in dict:
+            return GeneralizedTrainErrorResult(dict["train_error"], dict["computational_capacity"])
+        else:
+            return GeneralizedTrainErrorResult(dict["train_error"], None)
+
 
 class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
@@ -2301,6 +2354,8 @@ class Run:
                         measurements += [TrainErrorResult.from_dict(x)]
                     elif x["type"] == "SpectralRadiusValueResult":
                         measurements += [SpectralRadiusValueResult.from_dict(x)]
+                    elif x["type"] == "GeneralizedTrainErrorResult":
+                        measurements += [GeneralizedTrainErrorResult.from_dict(x)]
                     else:
                         raise ValueError(f"Failed to deserialize type: {m['type']}")
                 run.add_esnx_measurements(*tuple(measurements))
@@ -2461,11 +2516,11 @@ class AdvancedNetworkAnalyzation:
         correlation = np.zeros((self.n_dim, 1))
         for row in range(correlation.shape[0]):
             if self.w_in[row, 0] != 0 and self.w_in[row, 1] == 0 and self.w_in[row, 2] == 0:
-                correlation[row] = np.corrcoef(self.train_state_capture.r_captures[nth][:, row], self.train_state_capture.x_captures[nth][:, 0])[0,1]
+                correlation[row] = np.corrcoef(self.train_state_capture.r_captures[nth][:, row], self.train_state_capture.x_captures[nth][:-1, 0])[0,1]
             elif self.w_in[row, 1] != 0 and self.w_in[row, 0] == 0 and self.w_in[row, 2] == 0:
-                correlation[row] = np.corrcoef(self.train_state_capture.r_captures[nth][:, row], self.train_state_capture.x_captures[nth][:, 1])[0,1]
+                correlation[row] = np.corrcoef(self.train_state_capture.r_captures[nth][:, row], self.train_state_capture.x_captures[nth][:-1, 1])[0,1]
             elif self.w_in[row, 2] != 0 and self.w_in[row, 0] == 0 and self.w_in[row, 1] == 0:
-                correlation[row] = np.corrcoef(self.train_state_capture.r_captures[nth][:, row], self.train_state_capture.x_captures[nth][:, 2])[0,1]
+                correlation[row] = np.corrcoef(self.train_state_capture.r_captures[nth][:, row], self.train_state_capture.x_captures[nth][:-1, 2])[0,1]
             else:
                 raise "Failed to compute corrleation"
         return correlation
@@ -2486,7 +2541,7 @@ class AdvancedNetworkAnalyzation:
 
         corr = self.correlation_input_state(nth)
 
-        img0 = ax0.imshow(self.train_state_capture.x_captures[nth].T, interpolation='nearest')
+        img0 = ax0.imshow(self.train_state_capture.x_captures[nth][:-1,].T, interpolation='nearest')
         ax1.imshow(self.w_in, interpolation='nearest', vmin=-1., vmax=1.)
         img = ax2.imshow(self.train_state_capture.r_captures[nth].T, interpolation='nearest', vmin=-1., vmax=1.)
         ax3.imshow(corr, interpolation='nearest', vmin=-1., vmax=1.)
