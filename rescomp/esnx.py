@@ -1517,8 +1517,8 @@ class TrainStateSpaceResult:
             r1 = tsc.r_captures[0]
             r2 = tsc.r_captures[1]
         else:
-            r1 = tsc.r_captures[0][::stride_element,:]
-            r2 = tsc.r_captures[1][::stride_element,:]
+            r1 = tsc.r_captures[0][::stride_elements,:]
+            r2 = tsc.r_captures[1][::stride_elements,:]
 
         distance_matrix = scipy.spatial.distance.cdist(r1, r2).flatten()
 
@@ -2114,7 +2114,7 @@ class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
                 rewire_probability: float = None, activation_function: str = None, leaky_alpha: float = None, w_in_sparse: float = None,
                 simplified_network: bool = False, andrews_matrix_creation: bool = False, continuous_gamma: float = None, alpha_blend: float = None,
-                pca_components: int = None):
+                pca_components: int = None, bias_scale: float = None):
         self.size = size
         self.spectral_radius = spectral_radius
         self.average_degree = average_degree
@@ -2144,6 +2144,8 @@ class Run:
         self.andrews_matrix_creation = andrews_matrix_creation
         self.simplified_network = simplified_network
 
+        self.bias_scale = bias_scale
+
         self.measurements = []
 
     def get_esnx(self, attractor_config: AttractorConfig) -> ESNX:
@@ -2165,11 +2167,14 @@ class Run:
         if self.simplified_network:
             _simplify_adjacency_matrix(esnx.esn, self.spectral_radius)
 
+        if self.activation_function == "tanh_bias":
+            assert self.bias_scale != None
+
         if self.activation_function == None:
             esnx.esn._act_fct_flag = "tanh_simple"
         else:
             esnx.esn._act_fct_flag = self.activation_function
-        esnx.esn._set_activation_function(esnx.esn._act_fct_flag)
+        esnx.esn._set_activation_function(esnx.esn._act_fct_flag, 0 if self.bias_scale == None else self.bias_scale)
         esnx.esn._alpha = self.leaky_alpha
         esnx.esn._gamma = self.continuous_gamma
         esnx.alpha_blend = self.alpha_blend
@@ -2265,6 +2270,9 @@ class Run:
         if self.pca_components != None:
             dict["pca_components"] = self.pca_components
 
+        if self.bias_scale != None:
+            dict["bias_scale"] = self.bias_scale
+
         if len(self.measurements) > 0:
             dict["measurements"] = [[x.as_dict() for x in m] for m in self.measurements]
 
@@ -2305,6 +2313,9 @@ class Run:
 
         if "pca_components" in dict:
             run.pca_components = dict["pca_components"]
+
+        if "bias_scale" in dict:
+            run.bias_scale = dict["bias_scale"]
 
         run.simplified_network = ("simplified_network" in dict)
         run.andrews_matrix_creation = ("andrews_matrix_creation" in dict)
@@ -2464,8 +2475,10 @@ class AdvancedNetworkAnalyzation:
         self.w_in = copy.deepcopy(esnx.esn._w_in)
         if esnx.pca_components == None:
             self.w_out = np.hstack((esnx.esn._w_out.T[:self.n_dim,], esnx.esn._w_out.T[self.n_dim:,]))
-        else:
+        elif esnx.esn._w_out.shape[1] == 2*esnx.pca_components:
             self.w_out = np.hstack((esnx.esn._w_out.T[:esnx.pca_components,], esnx.esn._w_out.T[esnx.pca_components:,]))
+        elif esnx.esn._w_out.shape[1] == esnx.pca_components + 1:
+            self.w_out = esnx.esn._w_out.T[:esnx.pca_components]
         self.train_state_capture = train_state_capture
         
         self.is_permutated_by_degree = False

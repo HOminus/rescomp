@@ -109,7 +109,7 @@ class _ESNCore(utilities._ESNLogging):
         """
         # This needs to work for
         if type(self._pca_matrix) == np.ndarray:
-            r = self._pca_matrix @ (r - self._input_data_mean)
+            r = (r - self._input_data_mean) @ self._pca_matrix.T
 
         if self._w_out_fit_flag is 0:
             return r
