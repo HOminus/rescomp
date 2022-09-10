@@ -2070,11 +2070,13 @@ class TrainErrorResult:
         return TrainErrorResult(train_error)
 
 class GeneralizedTrainErrorResult:
-    def __init__(self, train_error: float, computational_capacity: float):
+    def __init__(self, train_error: float, computational_capacity: float, train_error_square: float, correct_computational_capacity: float):
         self.train_error = train_error
+        self.train_error_square = train_error_square
         self.computational_capacity = computational_capacity
+        self.correct_computational_capacity = correct_computational_capacity
 
-    def measure(tsc: TrainStateCapture, esnx: ESNX, cc: bool):
+    def measure(tsc: TrainStateCapture, esnx: ESNX):
         w_out = esnx.esn._w_out
 
         r_combined = np.vstack(tuple(tsc.r_captures))
@@ -2085,13 +2087,13 @@ class GeneralizedTrainErrorResult:
         fit_error = np.linalg.norm(w_out @ r_combined - y_combined, axis = 0)
         train_error = np.sum(fit_error)
 
-        computational_capacity = None
-        if cc:
-            normalization = np.linalg.norm(y_combined, axis = 0) ** 2
-            squared_fit_error = fit_error ** 2
-            computational_capacity = 1 - np.sum(squared_fit_error / normalization)
+        normalization = np.linalg.norm(y_combined, axis = 0) ** 2
+        squared_fit_error = fit_error ** 2
+        computational_capacity = 1 - np.sum(squared_fit_error / normalization)
+        squared_fit_error = np.sum(squared_fit_error)
+        correct_computational_capacity = 1 - squared_fit_error / np.sum(normalization)
         
-        return GeneralizedTrainErrorResult(train_error, computational_capacity)
+        return GeneralizedTrainErrorResult(train_error, computational_capacity, squared_fit_error, correct_computational_capacity)
 
     def as_dict(self):
         d = {
@@ -2100,15 +2102,30 @@ class GeneralizedTrainErrorResult:
         }
         if self.computational_capacity != None:
             d["computational_capacity"] = self.computational_capacity
+
+        if self.train_error_square != None:
+            d["train_error_square"] = self.train_error_square
+
+        if self.correct_computational_capacity != None:
+            d["correct_computational_capacity"] = self.correct_computational_capacity
+
         return d
 
     @staticmethod
     def from_dict(dict):
+        cc = None
         if "computational_capacity" in dict:
-            return GeneralizedTrainErrorResult(dict["train_error"], dict["computational_capacity"])
-        else:
-            return GeneralizedTrainErrorResult(dict["train_error"], None)
+            cc = dict["computational_capacity"]
 
+        tes = None
+        if "train_error_square" in dict:
+            tes = dict["train_error_square"]
+
+        ccc = None
+        if "correct_computational_capacity" in dict:
+            ccc = dict["correct_computational_capacity"]
+
+        return GeneralizedTrainErrorResult(dict["train_error"], cc, tes, ccc)
 
 class Run:
     def __init__(self, size: int, spectral_radius: float, average_degree: int, regression: float, input_strength: float, readout: str, topology: str,
