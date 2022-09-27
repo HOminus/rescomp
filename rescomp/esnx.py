@@ -923,6 +923,20 @@ class ESNX:
     def dump_win(self):
         print("Shape: ", self.esn._w_in.shape, "\n", self.esn._w_in)
 
+class SeedResult:
+    def __init__(self, seed: int):
+        self.seed = seed
+
+    def as_dict(self):
+        return {
+            "type": "SeedResult",
+            "seed": self.seed
+        }
+    
+    @staticmethod
+    def from_dict(dict):
+        return SeedResult(dict["seed"])
+
 class AttractorResult:
     def __init__(self, attractor_id: int, last_n_rmse_size: int, last_n_correlation_lyapunov_size: int):
         self.attractor_id = attractor_id
@@ -1993,14 +2007,6 @@ class StoreMatrixResult:
             self.w_out = w_out
             self.tsc = tsc
 
-    class StoreMatrixValue2:
-        def __init__(self, w_in, m, w_out, pca_matrix, tsc: TrainStateCapture):
-            self.w_in = w_in
-            self.m = m
-            self.w_out = w_out
-            self.pca = pca_matrix
-            self.tsc = tsc
-
     def __init__(self, path: str):
         self.filepath = path
 
@@ -2013,11 +2019,6 @@ class StoreMatrixResult:
         with open(f"{dir}/{self.filepath}", 'rb') as file:
             smv = pickle.load(file, encoding='bytes')
         return smv.w_in, smv.m, smv.w_out, smv.tsc
-
-    def load2_from_dir(self, dir: str):
-        with open(f"{dir}/{self.filepath}", 'rb') as file:
-            smv = pickle.load(file, encoding='bytes')
-        return smv.w_in, smv.m, smv.w_out, smv.pca, smv.tsc
 
     @staticmethod
     def unique_filename():
@@ -2374,6 +2375,8 @@ class Run:
                         measurements += [SpectralRadiusValueResult.from_dict(x)]
                     elif x["type"] == "GeneralizedTrainErrorResult":
                         measurements += [GeneralizedTrainErrorResult.from_dict(x)]
+                    elif x["type"] == "SeedResult":
+                        measurements += [SeedResult.from_dict(x)]
                     else:
                         raise ValueError(f"Failed to deserialize type: {m['type']}")
                 run.add_esnx_measurements(*tuple(measurements))
@@ -2446,7 +2449,7 @@ class SimulationResult:
                     attractor_data += [AttractorData(circle)]
                 elif attractor_specification["type"] == "ConstantConfig":
                     constant = ConstantConfig.from_dict(attractor_specification)
-                    attractor_data += [AttractorData(constant)]
+                    attractor_data += [AttractorData(constant)]                    
                 else:
                     raise ValueError(f"Failed to find valid attractor configuration")
             sr.attractor_config.attractors = attractor_data
@@ -2505,6 +2508,12 @@ class AdvancedNetworkAnalyzation:
         for row in range(esn._n_dim):
             self.degree_vector[row] = esn._network.indptr[row + 1] - esn._network.indptr[row]
         return self.degree_vector
+
+    def get_pca_matrix(self) -> np.ndarray:
+        r_combined = np.vstack(tuple(self.train_state_capture.r_captures))
+        pca = decomposition.PCA(n_components=self.n_dim)
+        pca.fit(r_combined)
+        return pca.components_
 
     def permutate_by_degree(self):
         permutation_degree_vector = []
