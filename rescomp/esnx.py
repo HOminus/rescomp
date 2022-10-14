@@ -2383,6 +2383,67 @@ class Run:
 
         return run
 
+    @staticmethod
+    def merge(*runs):
+        print("Warning: Run.merge might fail to cach errors produced by non matching runs.")
+
+        size = runs[0].size
+        spectral_radius = runs[0].spectral_radius
+        average_degree = runs[0].average_degree
+        regression = runs[0].regression
+        input_strength = runs[0].input_strength
+        readout = runs[0].readout
+        pca_components = runs[0].pca_components
+
+        topology = runs[0].topology
+        rewire_probability = runs[0].rewire_probability
+
+        activation_function = runs[0].activation_function
+        leaky_alpha = runs[0].leaky_alpha
+
+        continuous_gamma = runs[0].continuous_gamma
+
+        w_in_sparse = runs[0].w_in_sparse
+        alpha_blend = runs[0].alpha_blend
+
+        andrews_matrix_creation = runs[0].andrews_matrix_creation
+        simplified_network = runs[0].simplified_network
+
+        bias_scale = runs[0].bias_scale
+
+        merged_run = Run(size=size, spectral_radius=spectral_radius, average_degree=average_degree,
+                    regression=regression, input_strength=input_strength, readout=readout,
+                    topology=topology, rewire_probability=rewire_probability,
+                    activation_function=activation_function, leaky_alpha=leaky_alpha,
+                    w_in_sparse=w_in_sparse, simplified_network=simplified_network, 
+                    andrews_matrix_creation=andrews_matrix_creation, continuous_gamma=continuous_gamma,
+                    alpha_blend=alpha_blend, pca_components=pca_components,
+                    bias_scale=bias_scale)
+
+        for r in runs:
+            assert size == r.size
+            assert spectral_radius == r.spectral_radius
+            assert average_degree == r.average_degree
+            assert regression == r.regression
+            assert input_strength == r.input_strength
+            assert readout == r.readout
+            assert pca_components == r.pca_components
+            assert topology == r.topology
+            assert rewire_probability == r.rewire_probability
+            assert activation_function == r.activation_function
+            assert leaky_alpha == r.leaky_alpha
+            assert continuous_gamma == r.continuous_gamma
+            assert w_in_sparse == r.w_in_sparse
+            assert alpha_blend == r.alpha_blend
+            assert andrews_matrix_creation == r.andrews_matrix_creation
+            assert simplified_network == r.simplified_network
+            assert bias_scale == r.bias_scale
+
+            for measurements in r.measurements:
+                merged_run.add_esnx_measurements(*tuple(measurements))
+
+        return merged_run
+
 class SimulationResult:
     def __init__(self, config: AttractorConfig):
         self.attractor_config = config
